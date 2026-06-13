@@ -1,0 +1,62 @@
+## .NET / ASP.NET Core
+
+# Build outputs
+bin/
+obj/
+
+# NuGet packages
+*.nupkg
+*.snupkg
+.nuget/
+packages/
+
+# Visual Studio files
+.vs/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# Visual Studio Code
+.vscode/
+
+# JetBrains Rider
+.idea/
+*.sln.iml
+
+# Rider / ReSharper
+_ReSharper*/
+*.[Rr]e[Ss]harper
+*.DotSettings.user
+
+# MSTest / VSTest
+TestResults/
+*.trx
+*.coverage
+*.coveragexml
+
+# Publish output
+**/publish/
+**/PublishProfiles/
+
+# User-specific settings
+# launchSettings.json
+
+# Sensitive config (keep appsettings.json, ignore overrides with secrets)
+appsettings.*.json
+!appsettings.json
+!appsettings.Development.json
+
+# Entity Framework migrations (optional – remove if you want to track them)
+# Migrations/
+
+# macOS
+.DS_Store
+
+# Windows
+Thumbs.db
+Desktop.ini
+
+# Logs
+*.log
+logs/
