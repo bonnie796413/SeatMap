@@ -10,8 +10,12 @@
 | 後端 | Entity Framework Core | .NET 的 ORM 框架，透過 Code First 模型對應資料庫表格，簡化 SQL 操作 |
 | 後端 | NetTopologySuite | .NET 地理空間函式庫，提供幾何物件模型與運算，搭配 EF Core 與 PostGIS 進行空間資料的讀寫與計算 |
 | 前端 | Vue + Vite | Vue 為漸進式前端框架，負責元件化 UI 開發；Vite 為高效能建置工具，提供快速的開發伺服器與 HMR |
+| 前端 | Naive UI | Vue 3 的 UI 元件庫，提供表單（`n-form`）、Dialog（`n-modal`）、Table（`n-data-table`）、Upload（`n-upload`）、Menu（`n-menu`）等豐富元件，以全域安裝方式（`app.use(naive)`）整合至應用 |
+| 前端 | @vicons/material | xicons 系列的 Material Design 圖示集，與 Naive UI 搭配使用；座位標記以 SVG 字串嵌入 Leaflet `L.divIcon` 呈現於地圖上——已指派座位使用 `PersonFilled` 圖示（或員工頭像），未指派空座位使用 `EventSeatFilled` 圖示 |
+| 前端 | vue-draggable-plus | 基於 Sortable.js 的 Vue 3 拖曳套件，用於管理後台樓層清單的拖曳排序功能，排序結果提交至後端 `PUT /api/floors/reorder` |
 | 前端 | Leaflet | 輕量級開源 JavaScript 地圖函式庫，用於在瀏覽器中渲染互動式地圖，支援圖層、標記、多邊形等地圖元素 |
 | 轉檔工具 | GDAL | 開源地理資料轉換工具集，透過命令列（`ogr2ogr`）將 DXF 解析後轉換，再切割為地圖 Tile，供 Leaflet CRS.Simple 模式載入底圖 |
+| 後端 / 前端 | SignalR | ASP.NET Core 內建即時通訊框架（WebSocket 優先），用於 DXF 轉檔完成後由後端主動推送通知給前端，取代前端輪詢；前端使用 `@microsoft/signalr` npm 套件建立 HubConnection |
 
 ---
 
@@ -31,6 +35,8 @@ GDAL ogr2ogr 解析 DXF 向量資料
 切割為 Tile
        ↓
 Leaflet CRS.Simple 載入 Tile 作為底圖
+       ↓
+SignalR 推送 TileConversionCompleted 通知前端（Ready / Failed）
 ```
 
 ---
@@ -40,11 +46,15 @@ Leaflet CRS.Simple 載入 Tile 作為底圖
 | 功能 | 技術 |
 |------|------|
 | 底圖上傳與轉換 | GDAL CLI、ASP.NET Core Web API |
+| 轉檔即時通知 | SignalR（`TileConversionHub`，依 floorId 群組推送） |
 | 座位幾何座標儲存 | PostGIS (Point) + NetTopologySuite |
 | 座位地圖顯示 | Leaflet（CRS.Simple + Tile Layer） |
 | 多樓層管理 | PostgreSQL + EF Core |
 | 打卡狀態更新 | ASP.NET Core Web API |
 | 員工搜尋定位 | Leaflet `setView` |
+| 表單／Dialog／Table 等 UI 元件 | Naive UI |
+| 樓層清單拖曳排序 | vue-draggable-plus |
+| 圖示顯示（含地圖員工標記） | @vicons/material（已指派 `PersonFilled` / 空座位 `EventSeatFilled`） |
 
 ---
 
