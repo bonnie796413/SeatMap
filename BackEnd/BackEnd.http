@@ -1,6 +1,16 @@
 @BackEnd_HostAddress = http://localhost:7176
 
-GET {{BackEnd_HostAddress}}/weatherforecast/
+GET {{BackEnd_HostAddress}}/health
 Accept: application/json
+
+###
+
+POST {{BackEnd_HostAddress}}/api/auth/login
+Content-Type: application/json
+
+{
+  "username": "admin",
+  "password": "Admin@12345"
+}
 
 ###

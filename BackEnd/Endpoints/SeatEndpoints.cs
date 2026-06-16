@@ -1,54 +1,43 @@
+using BackEnd.Dtos.Seats;
+using BackEnd.Services;
+
 namespace BackEnd.Endpoints;
 
 public static class SeatEndpoints
 {
-    public static void MapSeatEndpoints(this WebApplication app)
+    public static IEndpointRouteBuilder MapSeatEndpoints(this IEndpointRouteBuilder app)
     {
-        var group = app.MapGroup("/seats").WithTags("Seats");
+        var group = app.MapGroup("/").WithTags("Seats");
 
-        group.MapGet("/", GetAllSeats)
-            .WithName("GetAllSeats");
+        // GET /api/floors/{floorId}/seats
+        group.MapGet("/floors/{floorId:guid}/seats", async (Guid floorId, SeatService svc) =>
+            Results.Ok(await svc.GetByFloorAsync(floorId)))
+            .RequireAuthorization();
 
-        group.MapGet("/{id}", GetSeatById)
-            .WithName("GetSeatById");
+        // GET /api/seats/{id}
+        group.MapGet("/seats/{id:guid}", async (Guid id, SeatService svc) =>
+            Results.Ok(await svc.GetByIdAsync(id)))
+            .RequireAuthorization();
 
-        group.MapPost("/", CreateSeat)
-            .WithName("CreateSeat");
+        // POST /api/seats
+        group.MapPost("/seats", async (CreateSeatRequest req, SeatService svc) =>
+        {
+            var seat = await svc.CreateAsync(req);
+            return Results.Created($"/api/seats/{seat.Id}", seat);
+        }).RequireAuthorization("AdminOnly");
 
-        group.MapPut("/{id}", UpdateSeat)
-            .WithName("UpdateSeat");
+        // PUT /api/seats/{id}
+        group.MapPut("/seats/{id:guid}", async (Guid id, UpdateSeatRequest req, SeatService svc) =>
+            Results.Ok(await svc.UpdateAsync(id, req)))
+            .RequireAuthorization("AdminOnly");
 
-        group.MapDelete("/{id}", DeleteSeat)
-            .WithName("DeleteSeat");
-    }
+        // DELETE /api/seats/{id}
+        group.MapDelete("/seats/{id:guid}", async (Guid id, SeatService svc) =>
+        {
+            await svc.DeleteAsync(id);
+            return Results.NoContent();
+        }).RequireAuthorization("AdminOnly");
 
-    private static IResult GetAllSeats()
-    {
-        // TODO: 實作取得所有座位邏輯
-        return Results.Ok(Array.Empty<object>());
-    }
-
-    private static IResult GetSeatById(int id)
-    {
-        // TODO: 實作取得單一座位邏輯
-        return Results.NotFound();
-    }
-
-    private static IResult CreateSeat()
-    {
-        // TODO: 實作新增座位邏輯
-        return Results.Created();
-    }
-
-    private static IResult UpdateSeat(int id)
-    {
-        // TODO: 實作更新座位邏輯
-        return Results.NoContent();
-    }
-
-    private static IResult DeleteSeat(int id)
-    {
-        // TODO: 實作刪除座位邏輯
-        return Results.NoContent();
+        return app;
     }
 }
