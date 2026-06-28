@@ -3,11 +3,12 @@
     <!-- 地圖容器 -->
     <div ref="mapEl" style="width: 100%; height: 100%;"></div>
 
-    <!-- 左上角樓層名稱 -->
+    <!-- 左上角樓層名稱（已錯開 Leaflet 縮放控制） -->
     <div class="map-overlay map-overlay--top-left">
-      <n-tag v-if="floorsStore.currentFloor" type="info">
-        {{ floorsStore.currentFloor.name }}
-      </n-tag>
+      <div v-if="floorsStore.currentFloor" class="floor-chip">
+        <span class="floor-chip__label">樓層</span>
+        <span class="floor-chip__name">{{ floorsStore.currentFloor.name }}</span>
+      </div>
       <n-empty v-else description="尚無樓層，請管理者先建立" size="small" />
     </div>
 
@@ -17,13 +18,20 @@
     </div>
 
     <!-- 搜尋框 -->
-    <div class="map-overlay map-overlay--top-right" style="width: 240px;">
+    <div class="map-overlay map-overlay--top-right" style="width: 260px;">
       <EmployeeSearch :map="getMap" />
     </div>
 
     <!-- 重置視角 -->
     <div class="map-overlay map-overlay--bottom-right">
       <n-button size="small" @click="resetView">重置視角</n-button>
+    </div>
+
+    <!-- 圖例 -->
+    <div class="map-overlay map-overlay--bottom-left seat-legend">
+      <div class="seat-legend__item"><span class="dot dot--present"></span>在場</div>
+      <div class="seat-legend__item"><span class="dot dot--absent"></span>不在場</div>
+      <div class="seat-legend__item"><span class="dot dot--empty"></span>空位</div>
     </div>
 
     <!-- 底圖狀態提示 -->
@@ -132,42 +140,3 @@ watch(() => floorsStore.currentSeats, renderSeats, { deep: true })
 const getMap = () => map
 defineExpose({ map: getMap })
 </script>
-
-<style>
-.map-overlay {
-  position: absolute;
-  z-index: 1000;
-  pointer-events: auto;
-}
-.map-overlay--top-left  { top: 12px; left: 12px; }
-.map-overlay--top-right { top: 12px; right: 60px; }
-.map-overlay--right     { top: 50%; right: 12px; transform: translateY(-50%); }
-.map-overlay--bottom-right { bottom: 28px; right: 12px; }
-.map-overlay--center {
-  top: 50%; left: 50%;
-  transform: translate(-50%, -50%);
-  min-width: 300px;
-}
-
-/* 座位標記樣式 */
-.seat-marker {
-  width: 32px; height: 32px;
-  border-radius: 50%;
-  display: flex; align-items: center; justify-content: center;
-  font-size: 14px; font-weight: bold; color: white;
-  border: 2px solid transparent;
-  cursor: pointer;
-  box-shadow: 0 1px 4px rgba(0,0,0,.4);
-}
-.seat-present  { background: #18a058; border-color: #0e7a3d; }
-.seat-absent   { background: #909399; border-color: #707070; }
-.seat-empty    {
-  background: rgba(255,255,255,0.85);
-  border: 2px dashed #ccc;
-  color: #aaa;
-}
-.seat-initials { font-size: 13px; }
-
-/* 底圖文字標籤（去除 divIcon 預設白底邊框） */
-.base-label { background: transparent; border: none; }
-</style>

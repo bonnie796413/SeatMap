@@ -1,38 +1,52 @@
 <template>
-  <n-config-provider>
+  <n-config-provider :theme-overrides="themeOverrides">
     <n-message-provider>
       <n-dialog-provider>
         <n-layout style="height: 100vh">
-          <n-layout-header
-            bordered
-            style="padding: 0 48px; height: 52px; display: flex; align-items: center; gap: 12px;"
-          >
-            <n-text strong style="font-size: 18px;">座位表系統</n-text>
-            <div style="flex: 1" />
+          <n-layout-header class="app-header">
+            <RouterLink to="/" class="brand" style="text-decoration: none; color: inherit; cursor: pointer;">
+              <div class="brand-mark">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path fill="currentColor" d="M4 18v1a1 1 0 0 0 1 1h1a1 1 0 0 0 1-1v-1h10v1a1 1 0 0 0 1 1h1a1 1 0 0 0 1-1v-1h.5a1.5 1.5 0 0 0 0-3H20V9a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v6H3.5a1.5 1.5 0 0 0 0 3H4Z"/></svg>
+              </div>
+              <span class="brand-title">座位表系統</span>
+            </RouterLink>
+
+            <div class="app-header__spacer"></div>
+
             <template v-if="auth.isAuthenticated">
+              <div
+                v-if="auth.user?.employeeId"
+                class="presence-pill"
+                :class="{ 'presence-pill--on': attendance.isPresent }"
+              >
+                <span class="presence-dot"></span>
+                {{ attendance.isPresent ? '在場' : '不在場' }}
+              </div>
+
               <CheckInButton v-if="auth.user?.employeeId" />
+
+              <span v-if="auth.isAdmin" class="header-divider">|</span>
               <RouterLink
                 v-if="auth.isAdmin"
                 :to="{ name: 'admin' }"
                 custom
                 v-slot="{ href, navigate }"
               >
-                <n-button
-                  text
-                  tag="a"
-                  :href="href"
-                  style="font-size: 14px;"
-                  @click="navigate"
-                >
+                <n-button text tag="a" :href="href" style="font-size: 14px;" @click="navigate">
                   管理後台
                 </n-button>
               </RouterLink>
-              
-              <n-text>{{ auth.user?.username }}</n-text>
+
+              <div class="user-chip">
+                <div class="user-avatar">{{ userInitial }}</div>
+                <n-text>{{ auth.user?.username }}</n-text>
+              </div>
+
               <n-button size="small" @click="handleLogout">登出</n-button>
             </template>
           </n-layout-header>
-          <n-layout-content style="height: calc(100vh - 52px);">
+
+          <n-layout-content class="surface-cream" style="height: calc(100vh - 60px);">
             <RouterView />
           </n-layout-content>
         </n-layout>
@@ -42,13 +56,18 @@
 </template>
 
 <script setup lang="ts">
-import { RouterView } from 'vue-router'
+import { computed } from 'vue'
+import { RouterView, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
-import { useRouter } from 'vue-router'
+import { useAttendanceStore } from '@/stores/attendance'
+import { themeOverrides } from '@/assets/theme'
 import CheckInButton from '@/components/CheckInButton.vue'
 
 const auth = useAuthStore()
+const attendance = useAttendanceStore()
 const router = useRouter()
+
+const userInitial = computed(() => auth.user?.username?.charAt(0).toUpperCase() ?? '?')
 
 function handleLogout() {
   auth.logout()

@@ -9,30 +9,35 @@
     <n-modal v-model:show="showAddModal" preset="dialog" title="新增座位">
       <n-form>
         <n-form-item label="座位編號">
-          <n-input v-model:value="newSeatNumber" placeholder="例：A-101" />
+          <n-input v-model:value="newSeatNumber" placeholder="例：A-101" @keydown.enter="handleAddSeat" />
         </n-form-item>
       </n-form>
       <template #action>
         <n-button @click="showAddModal = false">取消</n-button>
-        <n-button type="primary" :loading="saving" @click="handleAddSeat">確認</n-button>
+        <n-button type="primary" @click="handleAddSeat">確認</n-button>
       </template>
     </n-modal>
 
     <!-- 指派員工 Modal -->
     <n-modal v-model:show="showAssignModal" preset="dialog" title="指派員工">
-      <n-select
-        v-model:value="assignEmployeeId"
-        filterable
-        remote
-        clearable
-        :options="employeeOptions"
-        :loading="searchingEmployee"
-        placeholder="搜尋員工姓名..."
-        @search="searchEmployee"
-      />
+      <n-select v-model:value="assignEmployeeId" filterable remote clearable :options="employeeOptions"
+        :loading="searchingEmployee" placeholder="搜尋員工姓名..." @search="searchEmployee" />
       <template #action>
         <n-button @click="showAssignModal = false">取消</n-button>
-        <n-button type="primary" :loading="saving" @click="handleAssign">指派</n-button>
+        <n-button type="primary" @click="handleAssign">指派</n-button>
+      </template>
+    </n-modal>
+
+    <!-- 重新命名座位 Modal -->
+    <n-modal v-model:show="showRenameModal" preset="dialog" title="重新命名座位">
+      <n-form>
+        <n-form-item label="座位編號">
+          <n-input v-model:value="renameSeatNumber" placeholder="例：A-101" @keydown.enter="handleRename" />
+        </n-form-item>
+      </n-form>
+      <template #action>
+        <n-button @click="showRenameModal = false">取消</n-button>
+        <n-button type="primary" @click="handleRename">確認</n-button>
       </template>
     </n-modal>
   </div>
@@ -41,39 +46,84 @@
 <script setup lang="ts">
 import { ref, onMounted, onBeforeUnmount, watch } from 'vue'
 import L from 'leaflet'
-import { useMessage, useDialog } from 'naive-ui'
+import { useMessage } from 'naive-ui'
 import { seatsApi } from '@/api/seats'
 import { assignmentsApi } from '@/api/assignments'
 import { employeesApi } from '@/api/employees'
-import type { FloorMap, Seat, Employee } from '@/types'
+import type { FloorMap, Seat } from '@/types'
 import { loadBaseLayer } from '@/components/map/baseLayer'
+import { emptySeatIcon } from '@/components/map/seatMarkers'
 
-const props = defineProps<{ floorId: string; mapMeta: FloorMap | null }>()
+interface DraftAssignment {
+  employeeId: string
+  fullName: string
+  department: string | null
+}
+interface DraftSeat {
+  id: string // 真實 id，或新增座位的暫時 id（temp-N）
+  isNew: boolean
+  seatNumber: string
+  x: number
+  y: number
+  assignment: DraftAssignment | null
+}
+
+const props = defineProps<{ floorId: string; mapMeta: FloorMap | null; editable?: boolean }>()
 const message = useMessage()
-const dialog = useDialog()
 
 const mapEl = ref<HTMLElement>()
 let map: L.Map | null = null
 let baseLayer: L.GeoJSON | null = null
 let seatLayer: L.LayerGroup | null = null
 
-const seats = ref<Seat[]>([])
+// 原始快照（用於 diff）與工作草稿
+const originalSeats = ref<Seat[]>([])
+const draftSeats = ref<DraftSeat[]>([])
+const hasChanges = ref(false)
+const saving = ref(false)
+let tempCounter = 0
+
+// 新增座位
 const showAddModal = ref(false)
 const newSeatNumber = ref('')
 const pendingLatLng = ref<L.LatLng | null>(null)
-const saving = ref(false)
 
+// 改名
+const showRenameModal = ref(false)
+const renameSeatId = ref<string | null>(null)
+const renameSeatNumber = ref('')
+
+// 指派
 const showAssignModal = ref(false)
 const assignSeatId = ref<string | null>(null)
 const assignEmployeeId = ref<string | null>(null)
 const employeeOptions = ref<{ label: string; value: string }[]>([])
-const employeeCache = ref<Employee[]>([])
+const employeeCache = ref<DraftAssignment[]>([])
 const searchingEmployee = ref(false)
+
+function toDraft(s: Seat): DraftSeat {
+  return {
+    id: s.id,
+    isNew: false,
+    seatNumber: s.seatNumber,
+    x: s.x,
+    y: s.y,
+    assignment: s.assignment
+      ? { employeeId: s.assignment.employeeId, fullName: s.assignment.fullName, department: s.assignment.department }
+      : null,
+  }
+}
 
 async function loadSeats() {
   const res = await seatsApi.listByFloor(props.floorId)
-  seats.value = res.data
+  originalSeats.value = res.data
+  draftSeats.value = res.data.map(toDraft)
+  hasChanges.value = false
   renderSeats()
+}
+
+function findDraft(id: string) {
+  return draftSeats.value.find((s) => s.id === id)
 }
 
 function renderSeats() {
@@ -81,34 +131,37 @@ function renderSeats() {
   seatLayer?.remove()
   seatLayer = L.layerGroup()
 
-  for (const seat of seats.value) {
+  for (const seat of draftSeats.value) {
     const marker = L.marker([seat.y, seat.x], {
-      draggable: true,
+      draggable: !!props.editable,
       title: seat.seatNumber,
+      icon: emptySeatIcon(seat.seatNumber),
     })
 
     const assignedLabel = seat.assignment
       ? `<br/><small>指派：${seat.assignment.fullName}</small>`
       : '<br/><small>未指派</small>'
 
-    marker.bindPopup(`
-      <strong>${seat.seatNumber}</strong>${assignedLabel}
-      <div style="display:flex;gap:4px;margin-top:8px;flex-wrap:wrap;">
-        <button onclick="window._seatEdit('${seat.id}','${seat.seatNumber}')">改名</button>
-        <button onclick="window._seatAssign('${seat.id}')">指派</button>
-        ${seat.assignment ? `<button onclick="window._seatUnassign('${seat.id}')">解除指派</button>` : ''}
-        <button onclick="window._seatDelete('${seat.id}','${seat.seatNumber}',${!!seat.assignment},'${seat.assignment?.fullName ?? ''}')">刪除</button>
-      </div>
-    `)
+    // 僅在編輯模式顯示操作按鈕；唯讀時點擊只看座位資訊
+    const actions = props.editable
+      ? `<div class="seat-popup__actions">
+        <button class="seat-popup-btn" onclick="window._seatEdit('${seat.id}')">改名</button>
+        <button class="seat-popup-btn" onclick="window._seatAssign('${seat.id}')">指派</button>
+        ${seat.assignment ? `<button class="seat-popup-btn" onclick="window._seatUnassign('${seat.id}')">解除指派</button>` : ''}
+        <button class="seat-popup-btn seat-popup-btn--danger" onclick="window._seatDelete('${seat.id}')">刪除</button>
+      </div>`
+      : ''
 
-    marker.on('dragend', async (e: L.DragEndEvent) => {
+    marker.bindPopup(`<strong>${seat.seatNumber}</strong>${assignedLabel}${actions}`)
+
+    // 拖曳移動 → 只更新草稿座標
+    marker.on('dragend', (e: L.DragEndEvent) => {
       const latlng = (e as unknown as { target: L.Marker }).target.getLatLng()
-      try {
-        await seatsApi.update(seat.id, { seatNumber: seat.seatNumber, x: latlng.lng, y: latlng.lat })
-        message.success('座位已移動')
-        await loadSeats()
-      } catch (err: unknown) {
-        message.error((err instanceof Error ? err.message : null) ?? '移動失敗')
+      const d = findDraft(seat.id)
+      if (d) {
+        d.x = latlng.lng
+        d.y = latlng.lat
+        hasChanges.value = true
       }
     })
 
@@ -118,47 +171,72 @@ function renderSeats() {
   map && seatLayer.addTo(map)
 
   // 全域回呼（供 popup 按鈕使用）
-  ;(window as unknown as Record<string, unknown>)._seatEdit = (id: string, name: string) => promptEditSeat(id, name)
-  ;(window as unknown as Record<string, unknown>)._seatAssign = (id: string) => openAssign(id)
-  ;(window as unknown as Record<string, unknown>)._seatUnassign = (id: string) => unassignSeat(id)
-  ;(window as unknown as Record<string, unknown>)._seatDelete = (id: string, num: string, hasAssign: boolean, empName: string) =>
-    confirmDeleteSeat(id, num, hasAssign, empName)
+  const w = window as unknown as Record<string, unknown>
+  w._seatEdit = (id: string) => openRename(id)
+  w._seatAssign = (id: string) => openAssign(id)
+  w._seatUnassign = (id: string) => unassignSeat(id)
+  w._seatDelete = (id: string) => deleteSeat(id)
 }
 
-function promptEditSeat(id: string, currentName: string) {
-  const newName = prompt('輸入新座位編號', currentName)
-  if (!newName || newName === currentName) return
-  const seat = seats.value.find((s) => s.id === id)
-  if (!seat) return
-  seatsApi.update(id, { seatNumber: newName, x: seat.x, y: seat.y })
-    .then(() => { message.success('已更新'); loadSeats() })
-    .catch((e: unknown) => message.error((e instanceof Error ? e.message : null) ?? '更新失敗'))
-}
+// ── 草稿操作（皆不呼叫 API，按「儲存」才提交） ─────────────────────────────
 
-function confirmDeleteSeat(id: string, num: string, hasAssign: boolean, empName: string) {
-  const content = hasAssign
-    ? `座位 ${num} 已指派給 ${empName}，刪除將一併解除指派，確定？`
-    : `確定刪除座位 ${num}？`
-  dialog.warning({
-    title: '確認刪除座位',
-    content,
-    positiveText: '確認刪除',
-    negativeText: '取消',
-    onPositiveClick: async () => {
-      try {
-        await seatsApi.remove(id)
-        message.success('已刪除')
-        await loadSeats()
-      } catch (e: unknown) {
-        message.error((e instanceof Error ? e.message : null) ?? '刪除失敗')
-      }
-    },
+function handleAddSeat() {
+  const num = newSeatNumber.value.trim()
+  if (!num || !pendingLatLng.value) return
+  if (draftSeats.value.some((s) => s.seatNumber === num)) {
+    message.warning(`座位編號 ${num} 已存在`)
+    return
+  }
+  draftSeats.value.push({
+    id: `temp-${++tempCounter}`,
+    isNew: true,
+    seatNumber: num,
+    x: pendingLatLng.value.lng,
+    y: pendingLatLng.value.lat,
+    assignment: null,
   })
+  hasChanges.value = true
+  showAddModal.value = false
+  newSeatNumber.value = ''
+  renderSeats()
 }
 
-function openAssign(seatId: string) {
-  assignSeatId.value = seatId
+function openRename(id: string) {
+  const d = findDraft(id)
+  if (!d) return
+  renameSeatId.value = id
+  renameSeatNumber.value = d.seatNumber
+  showRenameModal.value = true
+}
+
+function handleRename() {
+  const id = renameSeatId.value
+  const newName = renameSeatNumber.value.trim()
+  if (!id || !newName) return
+  const d = findDraft(id)
+  if (!d) return
+  if (newName !== d.seatNumber && draftSeats.value.some((s) => s.id !== id && s.seatNumber === newName)) {
+    message.warning(`座位編號 ${newName} 已存在`)
+    return
+  }
+  d.seatNumber = newName
+  hasChanges.value = true
+  showRenameModal.value = false
+  map?.closePopup()
+  renderSeats()
+}
+
+function deleteSeat(id: string) {
+  draftSeats.value = draftSeats.value.filter((s) => s.id !== id)
+  hasChanges.value = true
+  map?.closePopup()
+  renderSeats()
+}
+
+function openAssign(id: string) {
+  assignSeatId.value = id
   assignEmployeeId.value = null
+  employeeOptions.value = []
   showAssignModal.value = true
 }
 
@@ -167,7 +245,11 @@ async function searchEmployee(query: string) {
   searchingEmployee.value = true
   try {
     const res = await employeesApi.search(query)
-    employeeCache.value = res.data as unknown as Employee[]
+    employeeCache.value = res.data.map((e) => ({
+      employeeId: e.employeeId,
+      fullName: e.fullName,
+      department: e.department,
+    }))
     employeeOptions.value = res.data.map((e) => ({
       label: `${e.fullName}${e.department ? ` · ${e.department}` : ''}`,
       value: e.employeeId,
@@ -177,51 +259,114 @@ async function searchEmployee(query: string) {
   }
 }
 
-async function handleAssign() {
+function handleAssign() {
   if (!assignSeatId.value || !assignEmployeeId.value) return
+  const emp = employeeCache.value.find((e) => e.employeeId === assignEmployeeId.value)
+  if (!emp) return
+  // 同一員工不可同時指派到兩個座位（提交時會違反唯一鍵）
+  const dup = draftSeats.value.find(
+    (s) => s.id !== assignSeatId.value && s.assignment?.employeeId === emp.employeeId,
+  )
+  if (dup) {
+    message.warning(`${emp.fullName} 已指派給座位 ${dup.seatNumber}，請先解除`)
+    return
+  }
+  const d = findDraft(assignSeatId.value)
+  if (!d) return
+  d.assignment = { ...emp }
+  hasChanges.value = true
+  showAssignModal.value = false
+  map?.closePopup()
+  renderSeats()
+}
+
+function unassignSeat(id: string) {
+  const d = findDraft(id)
+  if (!d) return
+  d.assignment = null
+  hasChanges.value = true
+  map?.closePopup()
+  renderSeats()
+}
+
+// ── 批次儲存 / 取消 ───────────────────────────────────────────────────────
+
+async function save() {
+  if (saving.value) return
   saving.value = true
   try {
-    await assignmentsApi.assign(assignSeatId.value, assignEmployeeId.value)
-    message.success('指派成功')
-    showAssignModal.value = false
+    const original = originalSeats.value
+    const draft = draftSeats.value
+    const tempIdMap = new Map<string, string>()
+    const draftRealIds = new Set(draft.filter((d) => !d.isNew).map((d) => d.id))
+
+    // 1. 刪除（original 有、draft 沒有）；cascade 會一併移除其指派
+    for (const o of original) {
+      if (!draftRealIds.has(o.id)) {
+        await seatsApi.remove(o.id)
+      }
+    }
+
+    // 2. 新增（temp 座位）→ 取得真實 id
+    for (const d of draft) {
+      if (!d.isNew) continue
+      const res = await seatsApi.create({
+        floorId: props.floorId,
+        seatNumber: d.seatNumber,
+        x: d.x,
+        y: d.y,
+      })
+      tempIdMap.set(d.id, res.data.id)
+    }
+
+    // 3. 更新既有座位（編號 / 座標變動）
+    for (const d of draft) {
+      if (d.isNew) continue
+      const o = original.find((s) => s.id === d.id)
+      if (o && (o.seatNumber !== d.seatNumber || o.x !== d.x || o.y !== d.y)) {
+        await seatsApi.update(d.id, { seatNumber: d.seatNumber, x: d.x, y: d.y })
+      }
+    }
+
+    // 4a. 先解除指派（原本有、現在沒有或換人），避免員工唯一鍵衝突
+    for (const o of original) {
+      if (!draftRealIds.has(o.id)) continue // 已刪除，cascade 處理過
+      const d = draft.find((s) => s.id === o.id)
+      const origEmp = o.assignment?.employeeId ?? null
+      const draftEmp = d?.assignment?.employeeId ?? null
+      if (origEmp && origEmp !== draftEmp) {
+        await assignmentsApi.unassignBySeat(o.id)
+      }
+    }
+
+    // 4b. 再指派（新增或換人）
+    for (const d of draft) {
+      const draftEmp = d.assignment?.employeeId ?? null
+      if (!draftEmp) continue
+      const realId = d.isNew ? tempIdMap.get(d.id) : d.id
+      if (!realId) continue
+      const origEmp = d.isNew ? null : (original.find((s) => s.id === d.id)?.assignment?.employeeId ?? null)
+      if (draftEmp !== origEmp) {
+        await assignmentsApi.assign(realId, draftEmp)
+      }
+    }
+
+    message.success('座位配置已儲存')
     await loadSeats()
   } catch (e: unknown) {
-    message.error((e instanceof Error ? e.message : null) ?? '指派失敗')
+    message.error((e instanceof Error ? e.message : null) ?? '儲存失敗，已重新載入目前狀態')
+    await loadSeats()
   } finally {
     saving.value = false
   }
 }
 
-async function unassignSeat(seatId: string) {
-  try {
-    await assignmentsApi.unassignBySeat(seatId)
-    message.success('已解除指派')
-    await loadSeats()
-  } catch (e: unknown) {
-    message.error((e instanceof Error ? e.message : null) ?? '解除失敗')
-  }
+async function cancel() {
+  await loadSeats()
+  message.info('已取消變更，回復至上次儲存的狀態')
 }
 
-async function handleAddSeat() {
-  if (!newSeatNumber.value.trim() || !pendingLatLng.value) return
-  saving.value = true
-  try {
-    await seatsApi.create({
-      floorId: props.floorId,
-      seatNumber: newSeatNumber.value.trim(),
-      x: pendingLatLng.value.lng,
-      y: pendingLatLng.value.lat,
-    })
-    message.success('座位已新增')
-    showAddModal.value = false
-    newSeatNumber.value = ''
-    await loadSeats()
-  } catch (e: unknown) {
-    message.error((e instanceof Error ? e.message : null) ?? '新增失敗')
-  } finally {
-    saving.value = false
-  }
-}
+// ── 地圖 ────────────────────────────────────────────────────────────────
 
 function initMap() {
   if (!mapEl.value || map) return
@@ -230,9 +375,11 @@ function initMap() {
     crs: L.CRS.Simple,
     minZoom: -2,
     maxZoom: 6,
+    attributionControl: false,
   })
 
   map.on('click', (e: L.LeafletMouseEvent) => {
+    if (!props.editable) return
     if (!props.mapMeta || props.mapMeta.status !== 'Ready') return
     pendingLatLng.value = e.latlng
     newSeatNumber.value = ''
@@ -266,13 +413,20 @@ onBeforeUnmount(() => { map?.remove(); map = null })
 
 watch(() => props.mapMeta, updateBaseLayer, { deep: true })
 watch(() => props.floorId, loadSeats)
+watch(() => props.editable, renderSeats)
+
+// 對外開放：供父層功能列觸發批次儲存 / 取消，並回報是否有未儲存變更
+defineExpose({ save, cancel, hasChanges })
 </script>
 
 <style scoped>
 .editor-placeholder {
-  position: absolute; inset: 0;
-  display: flex; align-items: center; justify-content: center;
-  background: rgba(255,255,255,0.8);
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 250, 235, 0.85);
   z-index: 999;
 }
 </style>

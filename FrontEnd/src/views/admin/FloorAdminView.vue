@@ -36,9 +36,35 @@
     <!-- 底圖 / 座位編輯區 -->
     <div v-if="selectedFloor" style="margin-top: 24px;">
       <n-divider>{{ selectedFloor.name }} — 底圖與座位設定</n-divider>
-      <FloorMapUploader :floor-id="selectedFloor.id" @map-ready="handleMapReady" />
+      <FloorMapUploader
+        ref="uploaderRef"
+        :floor-id="selectedFloor.id"
+        @map-ready="handleMapReady"
+        @map-removed="handleMapRemoved"
+      />
       <div style="margin-top: 16px; height: 500px;">
-        <SeatEditorMap :floor-id="selectedFloor.id" :map-meta="currentMapMeta" />
+        <SeatEditorMap ref="editorRef" :floor-id="selectedFloor.id" :map-meta="currentMapMeta" :editable="editing" />
+      </div>
+
+      <!-- 功能列：AI 分析座位（左） / 移除底圖 · 儲存（右） -->
+      <div class="editor-actions">
+        <button class="ai-analyze-btn" @click="handleAiAnalyze">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M11 3l1.6 4.4L17 9l-4.4 1.6L11 15l-1.6-4.4L5 9l4.4-1.6z"/><path d="M18 13l.9 2.4L21.3 16l-2.4.9L18 19.3l-.9-2.4L14.7 16l2.4-.9z"/></svg>
+          AI 分析座位
+        </button>
+        <div style="display: flex; gap: 10px;">
+          <n-button type="error" :disabled="currentMapMeta?.status !== 'Ready'" @click="handleRemoveMap">移除底圖</n-button>
+          <n-button
+            v-if="!editing"
+            type="primary"
+            :disabled="currentMapMeta?.status !== 'Ready'"
+            @click="startEditing"
+          >安排座位</n-button>
+          <template v-else>
+            <n-button :disabled="savingSeats" @click="handleCancel">取消</n-button>
+            <n-button type="primary" :loading="savingSeats" @click="handleSave">儲存</n-button>
+          </template>
+        </div>
       </div>
     </div>
   </div>
@@ -68,6 +94,10 @@ const renameValue = ref('')
 
 const selectedFloor = ref<Floor | null>(null)
 const currentMapMeta = ref<FloorMap | null>(null)
+const uploaderRef = ref<InstanceType<typeof FloorMapUploader> | null>(null)
+const editorRef = ref<InstanceType<typeof SeatEditorMap> | null>(null)
+const savingSeats = ref(false)
+const editing = ref(false)
 
 const columns = [
   { title: '名稱', key: 'name' },
@@ -79,7 +109,10 @@ const columns = [
       const typeMap: Record<string, 'success' | 'warning' | 'error' | 'default'> = {
         Ready: 'success', Processing: 'warning', Failed: 'error', None: 'default',
       }
-      return h(NTag, { type: typeMap[row.mapStatus] ?? 'default' }, { default: () => row.mapStatus })
+      const labelMap: Record<string, string> = {
+        Ready: '已就緒', Processing: '轉檔中', Failed: '解析失敗', None: '尚未上傳', Pending: '等待中',
+      }
+      return h(NTag, { type: typeMap[row.mapStatus] ?? 'default' }, { default: () => labelMap[row.mapStatus] ?? row.mapStatus })
     },
   },
   {
@@ -88,7 +121,7 @@ const columns = [
     render: (row: Floor) =>
       h('div', { style: 'display:flex;gap:8px;' }, [
         h(NButton, { size: 'small', onClick: () => openRename(row) }, { default: () => '重新命名' }),
-        h(NButton, { size: 'small', onClick: () => { selectedFloor.value = row; loadMapMeta(row.id) } }, { default: () => '編輯' }),
+        h(NButton, { size: 'small', onClick: () => { selectedFloor.value = row; loadMapMeta(row.id); editing.value = false } }, { default: () => '編輯' }),
         h(NButton, { size: 'small', type: 'error', onClick: () => handleDelete(row) }, { default: () => '刪除' }),
       ]),
   },
@@ -171,6 +204,43 @@ async function loadMapMeta(floorId: string) {
 
 function handleMapReady(meta: FloorMap) {
   currentMapMeta.value = meta
+}
+
+// 由 FloorMapUploader 觸發移除底圖；移除後同步狀態並刷新樓層清單
+function handleMapRemoved() {
+  currentMapMeta.value = null
+  load()
+}
+
+function handleRemoveMap() {
+  uploaderRef.value?.removeMap()
+}
+
+// 進入座位安排（編輯）模式
+function startEditing() {
+  editing.value = true
+}
+
+// 批次儲存座位草稿（新增 / 移動 / 改名 / 刪除 / 指派一次提交）
+async function handleSave() {
+  savingSeats.value = true
+  try {
+    await editorRef.value?.save()
+    await load() // 同步更新樓層清單的座位數
+    editing.value = false
+  } finally {
+    savingSeats.value = false
+  }
+}
+
+// 取消草稿，回復至上次儲存的狀態並退出編輯模式
+function handleCancel() {
+  editorRef.value?.cancel()
+  editing.value = false
+}
+
+function handleAiAnalyze() {
+  message.info('AI 座位分析功能開發中，敬請期待')
 }
 
 onMounted(load)

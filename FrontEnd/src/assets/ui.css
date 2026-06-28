@@ -1,0 +1,415 @@
+/* =====================================================================
+   SeatMap 全域 UI 樣式（Mistral 奶油色調）
+   所有共用、跨頁面的樣式都集中在這裡，元件內請勿重複撰寫。
+   色彩一律使用 base.css 定義的 --color-* tokens。
+   ===================================================================== */
+
+/* ---------- 通用表面 / 文字 helper ---------- */
+.surface-cream {
+  background: var(--color-cream);
+}
+
+.surface-cream-light {
+  background: var(--color-cream-light);
+}
+
+.panel {
+  background: var(--color-cream-light);
+  border: 1px solid var(--color-beige-deep);
+  border-radius: 12px;
+  box-shadow: 0 1px 3px rgba(31, 31, 31, 0.06);
+}
+
+.text-muted {
+  color: var(--color-steel);
+}
+
+.text-secondary {
+  color: var(--color-slate);
+}
+
+/* 品牌招牌：日落漸層條，可放任何頁面底部 */
+.sunset-stripe {
+  height: 6px;
+  width: 100%;
+  background: linear-gradient(90deg,
+      var(--color-primary),
+      var(--color-sunshine-800),
+      var(--color-sunshine-700),
+      var(--color-yellow-saturated),
+      var(--color-cream));
+}
+
+/* ---------- App Header ---------- */
+.app-header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  height: 60px;
+  padding: 0 28px;
+  background: var(--color-cream-light);
+  border-bottom: 1px solid var(--color-beige-deep);
+}
+
+.app-header__spacer {
+  flex: 1;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.brand-mark {
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+  background: var(--color-primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+}
+
+.brand-mark svg {
+  width: 22px;
+  height: 22px;
+  color: var(--color-cream-light);
+}
+
+.brand-title {
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: -0.2px;
+  color: var(--color-ink);
+}
+
+.header-divider {
+  color: var(--color-beige-deep);
+}
+
+/* 在場狀態膠囊 */
+.presence-pill {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 12px;
+  border-radius: 9999px;
+  font-size: 13px;
+  color: var(--color-slate);
+  background: var(--color-cream);
+  border: 1px solid var(--color-beige-deep);
+}
+
+.presence-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--color-absent);
+}
+
+.presence-pill--on {
+  background: rgba(31, 157, 87, 0.12);
+  border-color: rgba(31, 157, 87, 0.35);
+}
+
+.presence-pill--on .presence-dot {
+  background: var(--color-present);
+}
+
+/* 使用者頭像 */
+.user-chip {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.user-avatar {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: var(--color-cream-deeper);
+  border: 1px solid var(--color-beige-deep);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-charcoal);
+}
+
+/* ---------- 地圖覆蓋層 ---------- */
+.map-overlay {
+  position: absolute;
+  z-index: 1000;
+  pointer-events: auto;
+}
+
+.map-overlay--top-left {
+  top: 12px;
+  left: 56px;
+}
+
+/* 錯開 Leaflet 縮放控制 */
+.map-overlay--top-right {
+  top: 12px;
+  right: 12px;
+}
+
+.map-overlay--right {
+  top: 50%;
+  right: 12px;
+  transform: translateY(-50%);
+}
+
+.map-overlay--bottom-right {
+  bottom: 24px;
+  right: 12px;
+}
+
+.map-overlay--bottom-left {
+  bottom: 24px;
+  left: 12px;
+}
+
+.map-overlay--center {
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  min-width: 300px;
+}
+
+/* 樓層名稱 chip */
+.floor-chip {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  height: 40px;
+  padding: 0 16px;
+  background: var(--color-ink);
+  color: var(--color-cream-light);
+  border-radius: 10px;
+  box-shadow: 0 4px 14px rgba(31, 31, 31, 0.18);
+}
+
+.floor-chip__label {
+  font-size: 12px;
+  letter-spacing: 1px;
+  opacity: 0.6;
+}
+
+.floor-chip__name {
+  font-size: 17px;
+  font-weight: 500;
+}
+
+/* 圖例 */
+.seat-legend {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  padding: 10px 16px;
+  background: var(--color-cream-light);
+  border: 1px solid var(--color-beige-deep);
+  border-radius: 10px;
+  box-shadow: 0 1px 3px rgba(31, 31, 31, 0.08);
+  font-size: 13px;
+  color: var(--color-slate);
+}
+
+.seat-legend__item {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.seat-legend .dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.seat-legend .dot--present {
+  background: var(--color-present);
+}
+
+.seat-legend .dot--absent {
+  background: var(--color-absent);
+}
+
+.seat-legend .dot--empty {
+  background: var(--color-cream-light);
+  border: 2px dashed var(--color-beige-deep);
+}
+
+/* ---------- 座位標記（Leaflet divIcon，須為全域樣式） ---------- */
+.seat-marker {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 15px;
+  font-weight: 600;
+  color: #fff;
+  border: 2px solid rgba(0, 0, 0, 0.08);
+  cursor: pointer;
+  box-shadow: 0 2px 6px rgba(31, 31, 31, 0.22);
+  transition: box-shadow 120ms ease, transform 120ms ease;
+}
+
+.seat-marker:hover {
+  transform: scale(1.08);
+  box-shadow: 0 0 0 3px var(--color-cream-light), 0 0 0 5px var(--color-primary), 0 2px 6px rgba(31, 31, 31, 0.22);
+}
+
+.seat-present {
+  background: var(--color-present);
+  border-color: rgba(0, 0, 0, 0.08);
+}
+
+.seat-absent {
+  background: var(--color-absent);
+  border-color: rgba(0, 0, 0, 0.08);
+}
+
+.seat-empty {
+  background: var(--color-cream-light);
+  border: 2px dashed var(--color-beige-deep);
+  color: var(--color-steel);
+  box-shadow: none;
+}
+
+.seat-initials {
+  font-size: 15px;
+}
+
+/* 底圖文字標籤（去除 divIcon 預設白底邊框） */
+.base-label {
+  background: transparent;
+  border: none;
+}
+
+/* ---------- Leaflet 控制項 / Popup 配色 ---------- */
+.leaflet-control-zoom {
+  border: 1px solid var(--color-beige-deep) !important;
+  box-shadow: 0 4px 14px rgba(31, 31, 31, 0.18) !important;
+  border-radius: 10px !important;
+  overflow: hidden;
+}
+
+.leaflet-control-zoom a {
+  background: var(--color-cream-light) !important;
+  color: var(--color-ink) !important;
+  border-bottom: 1px solid var(--color-beige-deep) !important;
+}
+
+.leaflet-control-zoom a:hover {
+  background: var(--color-cream-deeper) !important;
+}
+
+.leaflet-popup-content-wrapper {
+  background: var(--color-cream-light) !important;
+  border: 1px solid var(--color-beige-deep);
+  border-radius: 12px !important;
+  box-shadow: 0 12px 28px rgba(31, 31, 31, 0.16) !important;
+}
+
+.leaflet-popup-tip {
+  background: var(--color-cream-light) !important;
+}
+
+.leaflet-popup-content {
+  color: var(--color-ink);
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.leaflet-popup-content strong {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+/* ---------- 管理後台：樓層編輯功能列 ---------- */
+.editor-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+/* AI 分析座位（特別按鈕：品牌日落漸層 + 暖光暈 + hover 上浮） */
+.ai-analyze-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 44px;
+  padding: 0 20px;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  font-family: var(--font-body);
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+  color: #fff;
+  background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-sunshine-800) 45%, var(--color-sunshine-700) 100%);
+  box-shadow: 0 4px 16px rgba(250, 82, 15, 0.35);
+  transition: transform 160ms ease, box-shadow 160ms ease, filter 160ms ease;
+}
+
+.ai-analyze-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 9px 26px rgba(250, 82, 15, 0.5);
+  filter: brightness(1.07) saturate(1.08);
+}
+
+.ai-analyze-btn svg {
+  width: 18px;
+  height: 18px;
+}
+
+/* 座位 popup 操作按鈕（後台座位編輯地圖） */
+.leaflet-popup-content small {
+  color: var(--color-steel);
+}
+
+.seat-popup__actions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.seat-popup-btn {
+  width: 100%;
+  height: 32px;
+  padding: 0 12px;
+  border: 1px solid var(--color-beige-deep);
+  border-radius: 7px;
+  background: var(--color-cream-light);
+  color: var(--color-slate);
+  font-family: var(--font-body);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 120ms ease;
+}
+
+.seat-popup-btn:hover {
+  background: var(--color-cream-deeper);
+}
+
+.seat-popup-btn--danger {
+  border-color: rgba(204, 58, 5, 0.3);
+  background: rgba(204, 58, 5, 0.08);
+  color: var(--color-primary-deep);
+}
+
+.seat-popup-btn--danger:hover {
+  background: rgba(204, 58, 5, 0.14);
+}

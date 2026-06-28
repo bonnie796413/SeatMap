@@ -21,10 +21,7 @@
         底圖已就緒，可在下方地圖預覽
       </n-alert>
     </div>
-
-    <div v-if="status === 'Ready'" style="margin-top: 8px; display: flex; gap: 8px;">
-      <n-button size="small" type="error" @click="handleDeleteMap">移除底圖</n-button>
-    </div>
+    <!-- 「移除底圖」按鈕已移至下方功能列（FloorAdminView），由父層透過 removeMap() 觸發 -->
   </div>
 </template>
 
@@ -36,7 +33,7 @@ import { floorsApi } from '@/api/floors'
 import type { FloorMap } from '@/types'
 
 const props = defineProps<{ floorId: string }>()
-const emit = defineEmits<{ mapReady: [meta: FloorMap] }>()
+const emit = defineEmits<{ mapReady: [meta: FloorMap]; mapRemoved: [] }>()
 
 const message = useMessage()
 const mapMeta = ref<FloorMap | null>(null)
@@ -81,10 +78,14 @@ async function handleDeleteMap() {
     mapMeta.value = null
     errorMsg.value = null
     message.success('底圖已移除')
+    emit('mapRemoved')
   } catch (e: unknown) {
     message.error((e instanceof Error ? e.message : null) ?? '移除失敗')
   }
 }
 
 onMounted(loadStatus)
+
+// 對外開放：讓父層的功能列觸發移除底圖
+defineExpose({ removeMap: handleDeleteMap, status })
 </script>

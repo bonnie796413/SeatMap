@@ -1,8 +1,9 @@
 <template>
   <n-button
-    :type="attendanceStore.isPresent ? 'warning' : 'primary'"
+    :type="attendanceStore.isPresent ? 'default' : 'primary'"
     :loading="loading"
     size="small"
+    strong
     @click="handleClick"
   >
     {{ attendanceStore.isPresent ? '下班打卡' : '上班打卡' }}
