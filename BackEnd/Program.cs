@@ -1,21 +1,25 @@
 using BackEnd.Data;
-using BackEnd.Entities;
 using BackEnd.Endpoints;
-using BackEnd.Hubs;
+using BackEnd.Entities;
 using BackEnd.Infrastructure;
 using BackEnd.Options;
 using BackEnd.Services;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.StaticFiles;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.FileProviders;
 using Scalar.AspNetCore;
+
+// ── MaxRev.Gdal native 初始化（一次性，須在任何 OGR 使用前） ───────────────────
+MaxRev.Gdal.Core.GdalBase.ConfigureAll();
+OSGeo.OGR.Ogr.RegisterAll();
 
 var builder = WebApplication.CreateBuilder(args);
 
 // ── Options ─────────────────────────────────────────────────────────────────
 builder.Services.Configure<CorsOptions>(builder.Configuration.GetSection("Cors"));
-builder.Services.Configure<GdalOptions>(builder.Configuration.GetSection("Gdal"));
-builder.Services.Configure<TilesOptions>(builder.Configuration.GetSection("Tiles"));
+builder.Services.Configure<MapStorageOptions>(builder.Configuration.GetSection("MapStorage"));
+builder.Services.Configure<GeoJsonConversionOptions>(builder.Configuration.GetSection("GeoJsonConversion"));
 
 // ── CORS ─────────────────────────────────────────────────────────────────────
 var allowedOrigins = builder.Configuration
@@ -26,8 +30,7 @@ builder.Services.AddCors(opt =>
     opt.AddPolicy("Frontend", policy =>
         policy.WithOrigins(allowedOrigins)
               .AllowAnyHeader()
-              .WithMethods("GET", "POST", "PUT", "DELETE")
-              .AllowCredentials()));
+              .WithMethods("GET", "POST", "PUT", "DELETE")));
 
 // ── Exception Handling & ProblemDetails ──────────────────────────────────────
 builder.Services.AddProblemDetails();
@@ -62,24 +65,20 @@ builder.Services.AddAuthorization(options =>
     options.AddPolicy("AdminOnly", p => p.RequireRole("Admin"));
 });
 
-// ── SignalR ────────────────────────────────────────────────────────────────────
-builder.Services.AddSignalR();
-
 // ── Health Checks ─────────────────────────────────────────────────────────────
 builder.Services.AddHealthChecks()
     .AddDbContextCheck<AppDbContext>();
 
 // ── Application Services ──────────────────────────────────────────────────────
 builder.Services.AddScoped<FloorService>();
-builder.Services.AddScoped<ITileStorage, TileStorage>();
+builder.Services.AddScoped<FloorMapStorage>();
+builder.Services.AddScoped<IFloorMapStorage>(sp => sp.GetRequiredService<FloorMapStorage>());
+builder.Services.AddScoped<DxfToGeoJsonConverter>();
+builder.Services.AddScoped<FloorMapService>();
 builder.Services.AddScoped<SeatService>();
 builder.Services.AddScoped<EmployeeService>();
 builder.Services.AddScoped<AssignmentService>();
 builder.Services.AddScoped<AttendanceService>();
-builder.Services.AddScoped<TileConversionService>();
-builder.Services.AddScoped<GdalRunner>();
-builder.Services.AddSingleton<TileConversionChannel>();
-builder.Services.AddHostedService<TileConversionWorker>();
 
 // ── OpenAPI (Development) ─────────────────────────────────────────────────────
 builder.Services.AddOpenApi();
@@ -118,20 +117,20 @@ app.UseExceptionHandler();
 // ── Health Check ──────────────────────────────────────────────────────────────
 app.MapHealthChecks("/health").AllowAnonymous();
 
-// ── Static Files for Tiles ────────────────────────────────────────────────────
-var tilesRootPath = builder.Configuration["Tiles:RootPath"] ?? "./_data/tiles";
-var tilesAbsolute = Path.GetFullPath(tilesRootPath);
-if (!Directory.Exists(tilesAbsolute))
-    Directory.CreateDirectory(tilesAbsolute);
+// ── Static Files for GeoJSON 底圖 ─────────────────────────────────────────────
+var mapStorageRoot = builder.Configuration["MapStorage:RootPath"] ?? "./_data";
+var mapsAbsolute = Path.GetFullPath(Path.Combine(mapStorageRoot, "maps"));
+Directory.CreateDirectory(mapsAbsolute);
+
+var geoJsonContentType = new FileExtensionContentTypeProvider();
+geoJsonContentType.Mappings[".geojson"] = "application/geo+json";
 
 app.UseStaticFiles(new StaticFileOptions
 {
-    FileProvider = new PhysicalFileProvider(tilesAbsolute),
-    RequestPath = "/tiles"
+    FileProvider = new PhysicalFileProvider(mapsAbsolute),
+    RequestPath = "/maps",
+    ContentTypeProvider = geoJsonContentType
 });
-
-// ── SignalR Hub ───────────────────────────────────────────────────────────────
-app.MapHub<TileConversionHub>("/hubs/tile-conversion");
 
 // ── API Group ─────────────────────────────────────────────────────────────────
 var api = app.MapGroup("/api");

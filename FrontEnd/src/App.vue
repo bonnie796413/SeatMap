@@ -11,15 +11,23 @@
             <div style="flex: 1" />
             <template v-if="auth.isAuthenticated">
               <CheckInButton v-if="auth.user?.employeeId" />
-              <n-button
+              <RouterLink
                 v-if="auth.isAdmin"
-                text
-                tag="RouterLink"
-                to="/admin"
-                style="font-size: 14px;"
+                :to="{ name: 'admin' }"
+                custom
+                v-slot="{ href, navigate }"
               >
-                管理後台
-              </n-button>
+                <n-button
+                  text
+                  tag="a"
+                  :href="href"
+                  style="font-size: 14px;"
+                  @click="navigate"
+                >
+                  管理後台
+                </n-button>
+              </RouterLink>
+              
               <n-text>{{ auth.user?.username }}</n-text>
               <n-button size="small" @click="handleLogout">登出</n-button>
             </template>

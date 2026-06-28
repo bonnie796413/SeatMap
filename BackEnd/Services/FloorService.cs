@@ -6,7 +6,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace BackEnd.Services;
 
-public class FloorService(AppDbContext db, ITileStorage tileStorage, ILogger<FloorService> logger)
+public class FloorService(AppDbContext db, IFloorMapStorage mapStorage, ILogger<FloorService> logger)
 {
     public async Task<List<FloorResponse>> GetAllAsync()
     {
@@ -98,11 +98,11 @@ public class FloorService(AppDbContext db, ITileStorage tileStorage, ILogger<Flo
 
         try
         {
-            await tileStorage.DeleteFloorTilesAsync(id);
+            await mapStorage.DeleteFloorMapAsync(id);
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "刪除樓層 {FloorId} 的 Tile 檔案失敗，請手動清理", id);
+            logger.LogError(ex, "刪除樓層 {FloorId} 的底圖檔案失敗，請手動清理", id);
         }
     }
 

@@ -18,7 +18,7 @@
 
     <!-- 搜尋框 -->
     <div class="map-overlay map-overlay--top-right" style="width: 240px;">
-      <EmployeeSearch :map="map" />
+      <EmployeeSearch :map="getMap" />
     </div>
 
     <!-- 重置視角 -->
@@ -31,7 +31,7 @@
       v-if="mapStatusMsg"
       class="map-overlay map-overlay--center"
     >
-      <n-alert :type="mapStatusType">{{ mapStatusMsg }}</n-alert>
+      <n-alert type="error">{{ mapStatusMsg }}</n-alert>
     </div>
   </div>
 </template>
@@ -41,66 +41,55 @@ import { ref, onMounted, onBeforeUnmount, watch, computed } from 'vue'
 import L from 'leaflet'
 import { useFloorsStore } from '@/stores/floors'
 import { createSeatMarkers } from './seatMarkers'
+import { loadBaseLayer } from './baseLayer'
 import EmployeeSearch from './EmployeeSearch.vue'
 import type { Seat } from '@/types'
-import { API_ORIGIN } from '@/api/http'
 
 const floorsStore = useFloorsStore()
 const mapEl = ref<HTMLElement>()
 let map: L.Map | null = null
-let tileLayer: L.TileLayer | null = null
+let baseLayer: L.GeoJSON | null = null
 let seatLayer: L.LayerGroup | null = null
 let pollInterval: number | undefined
 
-const currentBounds = ref<L.LatLngBoundsExpression>([[0, 0], [1000, 1000]])
+const currentBounds = ref<L.LatLngBounds | null>(null)
 
 const mapStatusMsg = computed(() => {
-  const status = floorsStore.currentMapMeta?.status
-  if (!status || status === 'Ready' || status === 'None') return ''
-  if (status === 'Processing') return '底圖轉檔中，請稍候...'
-  if (status === 'Failed') return `底圖轉檔失敗：${floorsStore.currentMapMeta?.errorMessage ?? ''}`
+  const meta = floorsStore.currentMapMeta
+  if (meta?.status === 'Failed') return `底圖解析失敗：${meta.errorMessage ?? ''}`
   return ''
 })
 
-const mapStatusType = computed(() => {
-  const status = floorsStore.currentMapMeta?.status
-  if (status === 'Processing') return 'info'
-  if (status === 'Failed') return 'error'
-  return 'default'
-})
-
 function resetView() {
-  map?.fitBounds(currentBounds.value as L.LatLngBoundsExpression)
+  if (currentBounds.value) map?.fitBounds(currentBounds.value)
 }
 
-function renderFloor() {
+async function renderBaseLayer() {
   if (!map) return
-
-  // 移除舊圖層
-  tileLayer?.remove()
-  seatLayer?.remove()
+  baseLayer?.remove()
+  baseLayer = null
+  currentBounds.value = null
 
   const meta = floorsStore.currentMapMeta
-  if (meta?.status === 'Ready' && meta.tileUrlTemplate && meta.boundsJson) {
-    const bounds = JSON.parse(meta.boundsJson) as L.LatLngBoundsExpression
-    currentBounds.value = bounds
-
-    tileLayer = L.tileLayer(
-      `${API_ORIGIN}${meta.tileUrlTemplate}`,
-      {
-        minZoom: meta.minZoom,
-        maxZoom: meta.maxZoom,
-        tileSize: 256,
-        noWrap: true,
-        bounds,
-      },
-    )
-    tileLayer.addTo(map)
-    map.setMaxBounds(bounds)
-    map.fitBounds(bounds)
+  if (meta?.status === 'Ready' && meta.geoJsonUrl) {
+    try {
+      baseLayer = await loadBaseLayer(meta.geoJsonUrl)
+      baseLayer.addTo(map)
+      const b = baseLayer.getBounds()
+      if (b.isValid()) {
+        currentBounds.value = b
+        map.setMaxBounds(b.pad(0.5))
+        map.fitBounds(b)
+      }
+    } catch (e) {
+      console.error('底圖載入失敗', e)
+    }
   }
+}
 
-  // 繪製座位
+function renderSeats() {
+  if (!map) return
+  seatLayer?.remove()
   seatLayer = createSeatMarkers(floorsStore.currentSeats, handleSeatClick)
   seatLayer.addTo(map)
 }
@@ -112,21 +101,16 @@ function handleSeatClick(_seat: Seat) {
 onMounted(async () => {
   if (!mapEl.value) return
 
-  map = L.map(mapEl.value, {
-    crs: L.CRS.Simple,
-    minZoom: -2,
-    maxZoom: 6,
-  })
+  map = L.map(mapEl.value, { crs: L.CRS.Simple })
 
   await floorsStore.loadFloors()
-  renderFloor()
+  await renderBaseLayer()
+  renderSeats()
 
-  // 輪詢在場狀態
+  // 輪詢在場狀態（僅重繪座位，不重載底圖）
   pollInterval = window.setInterval(async () => {
     await floorsStore.refreshSeats()
-    seatLayer?.remove()
-    seatLayer = createSeatMarkers(floorsStore.currentSeats, handleSeatClick)
-    if (map) seatLayer.addTo(map)
+    renderSeats()
   }, 20000)
 
   // 視窗 resize
@@ -139,13 +123,14 @@ onBeforeUnmount(() => {
   map = null
 })
 
-watch(
-  () => [floorsStore.currentFloor?.id, floorsStore.currentMapMeta, floorsStore.currentSeats],
-  renderFloor,
-  { deep: true },
-)
+// 樓層切換（底圖 URL／狀態改變）→ 重載底圖
+watch(() => floorsStore.currentMapMeta?.geoJsonUrl, renderBaseLayer)
+watch(() => floorsStore.currentMapMeta?.status, renderBaseLayer)
+// 座位資料改變 → 只重繪座位
+watch(() => floorsStore.currentSeats, renderSeats, { deep: true })
 
-defineExpose({ map: () => map })
+const getMap = () => map
+defineExpose({ map: getMap })
 </script>
 
 <style>
@@ -182,4 +167,7 @@ defineExpose({ map: () => map })
   color: #aaa;
 }
 .seat-initials { font-size: 13px; }
+
+/* 底圖文字標籤（去除 divIcon 預設白底邊框） */
+.base-label { background: transparent; border: none; }
 </style>

@@ -18,6 +18,7 @@ const router = createRouter({
     {
       path: '/admin',
       name: 'admin',
+      redirect: { name: 'admin-floors' },
       component: () => import('@/views/admin/AdminView.vue'),
       meta: { requiresAuth: true, requiresAdmin: true },
       children: [
@@ -30,10 +31,6 @@ const router = createRouter({
           path: 'employees',
           name: 'admin-employees',
           component: () => import('@/views/admin/EmployeeAdminView.vue'),
-        },
-        {
-          path: '',
-          redirect: { name: 'admin-floors' },
         },
       ],
     },

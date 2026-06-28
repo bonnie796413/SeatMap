@@ -5,25 +5,24 @@
       :max="1"
       :custom-request="handleUpload"
       :show-file-list="false"
+      :disabled="uploading"
     >
       <n-upload-dragger>
-        <p>點擊或拖曳 .dxf 檔案至此上傳底圖</p>
+        <p v-if="uploading"><n-spin size="small" /> 轉檔中，請稍候...</p>
+        <p v-else>點擊或拖曳 .dxf 檔案至此上傳底圖</p>
       </n-upload-dragger>
     </n-upload>
 
     <div style="margin-top: 12px;">
-      <template v-if="status === 'Processing'">
-        <n-spin size="small" /> 轉檔中，請稍候...
-      </template>
-      <n-alert v-else-if="status === 'Failed'" type="error">
-        轉檔失敗：{{ errorMsg }}
+      <n-alert v-if="status === 'Failed'" type="error">
+        底圖解析失敗：{{ errorMsg }}
       </n-alert>
       <n-alert v-else-if="status === 'Ready'" type="success">
         底圖已就緒，可在下方地圖預覽
       </n-alert>
     </div>
 
-    <div v-if="mapMeta?.status === 'Ready'" style="margin-top: 8px; display: flex; gap: 8px;">
+    <div v-if="status === 'Ready'" style="margin-top: 8px; display: flex; gap: 8px;">
       <n-button size="small" type="error" @click="handleDeleteMap">移除底圖</n-button>
     </div>
   </div>
@@ -43,8 +42,7 @@ const message = useMessage()
 const mapMeta = ref<FloorMap | null>(null)
 const status = ref<string>('None')
 const errorMsg = ref<string | null>(null)
-
-let pollTimer: ReturnType<typeof setTimeout> | undefined
+const uploading = ref(false)
 
 async function loadStatus() {
   const res = await floorsApi.getMap(props.floorId)
@@ -54,25 +52,26 @@ async function loadStatus() {
   if (res.data.status === 'Ready') emit('mapReady', res.data)
 }
 
+// 同步上傳：POST 直接回傳轉檔結果（Ready / 失敗則拋例外）
 async function handleUpload({ file, onFinish, onError }: UploadCustomRequestOptions) {
+  uploading.value = true
   try {
-    await floorsApi.uploadMap(props.floorId, file.file as File)
-    status.value = 'Processing'
-    message.info('已上傳，轉檔中...')
-    startPolling()
+    const res = await floorsApi.uploadMap(props.floorId, file.file as File)
+    mapMeta.value = res.data
+    status.value = res.data.status
+    errorMsg.value = res.data.errorMessage
+    message.success('底圖轉檔完成')
+    emit('mapReady', res.data)
     onFinish()
   } catch (e: unknown) {
-    message.error((e instanceof Error ? e.message : null) ?? '上傳失敗')
+    status.value = 'Failed'
+    const msg = (e instanceof Error ? e.message : null) ?? '上傳失敗'
+    errorMsg.value = msg
+    message.error(msg)
     onError()
+  } finally {
+    uploading.value = false
   }
-}
-
-function startPolling() {
-  clearTimeout(pollTimer)
-  pollTimer = setTimeout(async () => {
-    await loadStatus()
-    if (status.value === 'Processing') startPolling()
-  }, 3000)
 }
 
 async function handleDeleteMap() {
@@ -80,6 +79,7 @@ async function handleDeleteMap() {
     await floorsApi.deleteMap(props.floorId)
     status.value = 'None'
     mapMeta.value = null
+    errorMsg.value = null
     message.success('底圖已移除')
   } catch (e: unknown) {
     message.error((e instanceof Error ? e.message : null) ?? '移除失敗')

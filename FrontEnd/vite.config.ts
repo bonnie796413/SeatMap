@@ -12,7 +12,7 @@ export default defineConfig(({ mode }) => ({
   },
   base: mode === 'production' ? '/SeatMap/' : '/',
   server: {
-    port: 8000,
+    port: 8080,
     strictPort: true,
   },
 }))

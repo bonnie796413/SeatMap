@@ -23,10 +23,7 @@ export interface Floor {
 export interface FloorMap {
   floorId: string
   status: string
-  minZoom: number
-  maxZoom: number
-  boundsJson: string | null
-  tileUrlTemplate: string | null
+  geoJsonUrl: string | null
   errorMessage: string | null
 }
 

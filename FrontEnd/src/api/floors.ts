@@ -13,7 +13,7 @@ export const floorsApi = {
   uploadMap: (floorId: string, file: File) => {
     const form = new FormData()
     form.append('file', file)
-    return http.post(`/floors/${floorId}/map`, form)
+    return http.post<FloorMap>(`/floors/${floorId}/map`, form)
   },
   deleteMap: (floorId: string) => http.delete(`/floors/${floorId}/map`),
 }

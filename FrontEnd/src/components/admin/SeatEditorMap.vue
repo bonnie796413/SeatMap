@@ -46,7 +46,7 @@ import { seatsApi } from '@/api/seats'
 import { assignmentsApi } from '@/api/assignments'
 import { employeesApi } from '@/api/employees'
 import type { FloorMap, Seat, Employee } from '@/types'
-import { API_ORIGIN } from '@/api/http'
+import { loadBaseLayer } from '@/components/map/baseLayer'
 
 const props = defineProps<{ floorId: string; mapMeta: FloorMap | null }>()
 const message = useMessage()
@@ -54,7 +54,7 @@ const dialog = useDialog()
 
 const mapEl = ref<HTMLElement>()
 let map: L.Map | null = null
-let tileLayer: L.TileLayer | null = null
+let baseLayer: L.GeoJSON | null = null
 let seatLayer: L.LayerGroup | null = null
 
 const seats = ref<Seat[]>([])
@@ -239,33 +239,32 @@ function initMap() {
     showAddModal.value = true
   })
 
-  updateTile()
+  updateBaseLayer()
   loadSeats()
 }
 
-function updateTile() {
+async function updateBaseLayer() {
   if (!map) return
-  tileLayer?.remove()
+  baseLayer?.remove()
+  baseLayer = null
 
   const meta = props.mapMeta
-  if (meta?.status === 'Ready' && meta.tileUrlTemplate && meta.boundsJson) {
-    const bounds = JSON.parse(meta.boundsJson) as L.LatLngBoundsExpression
-    tileLayer = L.tileLayer(`${API_ORIGIN}${meta.tileUrlTemplate}`, {
-      minZoom: meta.minZoom,
-      maxZoom: meta.maxZoom,
-      tileSize: 256,
-      noWrap: true,
-      bounds,
-    })
-    tileLayer.addTo(map)
-    map.fitBounds(bounds)
+  if (meta?.status === 'Ready' && meta.geoJsonUrl) {
+    try {
+      baseLayer = await loadBaseLayer(meta.geoJsonUrl)
+      baseLayer.addTo(map)
+      const b = baseLayer.getBounds()
+      if (b.isValid()) map.fitBounds(b)
+    } catch (e) {
+      console.error('底圖載入失敗', e)
+    }
   }
 }
 
 onMounted(initMap)
 onBeforeUnmount(() => { map?.remove(); map = null })
 
-watch(() => props.mapMeta, updateTile, { deep: true })
+watch(() => props.mapMeta, updateBaseLayer, { deep: true })
 watch(() => props.floorId, loadSeats)
 </script>
 
