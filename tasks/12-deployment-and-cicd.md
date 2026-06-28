@@ -2,11 +2,11 @@
 
 ## 模組目標
 
-將三端部署到目標平台並串接：後端 ASP.NET Core（含 GDAL）以 Docker 部署到 **Fly.io**、
-Tile 存於 Fly.io **persistent volume**；前端 Vue 建置後部署到 **GitHub Pages**；
+將三端部署到目標平台並串接：後端 ASP.NET Core（GDAL 由 `MaxRev.Gdal` NuGet 內含）以 Docker 部署到 **Fly.io**、
+GeoJSON 底圖存於 Fly.io **persistent volume**；前端 Vue 建置後部署到 **GitHub Pages**；
 資料庫使用 **Neon** PostgreSQL（啟用 PostGIS）。完成環境變數、CORS、Migration 與 CI/CD 流程。
 
-對應 `others.md` 部署表與 SA 文件 Tile 架構。
+對應 `others.md` 部署表與 SA 文件底圖向量（GeoJSON）架構。
 
 ## 前置相依
 
@@ -18,9 +18,9 @@ Tile 存於 Fly.io **persistent volume**；前端 Vue 建置後部署到 **GitHu
 ## 部署拓撲
 
 ```
-[GitHub Pages]  前端 SPA (Vue) ──HTTPS──► [Fly.io] 後端 API + GDAL + Tile 靜態服務
+[GitHub Pages]  前端 SPA (Vue) ──HTTPS──► [Fly.io] 後端 API（含 MaxRev.Gdal）+ GeoJSON 靜態服務
                                               │
-                                              ├─ persistent volume: /data (tiles + dxf)
+                                              ├─ persistent volume: /data (maps + dxf)
                                               │
                                               └──SSL──► [Neon] PostgreSQL + PostGIS
 ```
@@ -46,18 +46,17 @@ Host=<ep>.neon.tech;Database=<db>;Username=<user>;Password=<pwd>;SSL Mode=Requir
 
 ---
 
-## B. 後端（Fly.io + Docker + GDAL）
+## B. 後端（Fly.io + Docker）
 
-### 步驟 B1：Dockerfile（多階段 + GDAL）
+### 步驟 B1：Dockerfile（多階段）
 新增 `BackEnd/Dockerfile`：
 - **build stage**：`mcr.microsoft.com/dotnet/sdk:10.0` → `dotnet restore` → `dotnet publish -c Release -o /app`。
 - **runtime stage**：`mcr.microsoft.com/dotnet/aspnet:10.0`：
-  - `apt-get update && apt-get install -y gdal-bin python3-gdal`（提供 `ogr2ogr`/`gdal_rasterize`/`gdal2tiles`）。
-  - 複製 publish 輸出。
+  - 複製 publish 輸出（GDAL native library 由 `MaxRev.Gdal` NuGet 隨發佈帶入，**不需** `apt-get install gdal-bin`）。
   - `ENV ASPNETCORE_URLS=http://+:8080`。
   - `EXPOSE 8080`。
   - `ENTRYPOINT ["dotnet","BackEnd.dll"]`。
-- 確認容器內 `ogr2ogr --version`、`gdal2tiles --help` 可執行（`GdalOptions` 路徑用 PATH 名稱即可）。
+- 確認 publish 已還原 `MaxRev.Gdal.LinuxRuntime.Minimal`（對應 `linux-x64` RID）。若啟動時報缺少原生相依（如 `libgomp1`），於 runtime stage 補裝最小系統套件即可。
 - `.dockerignore`：排除 `bin/`、`obj/`、`_data/`。
 
 ### 步驟 B2：fly.toml
@@ -65,14 +64,14 @@ Host=<ep>.neon.tech;Database=<db>;Username=<user>;Password=<pwd>;SSL Mode=Requir
 - `app = "<seatmap-api>"`、`primary_region`。
 - `[http_service]`：`internal_port = 8080`、`force_https = true`、`auto_stop_machines`/`min_machines_running`（MVP 可設 1，避免 volume 多機與 migration 競爭）。
 - `[[http_service.checks]]` 或 `[checks]`：HTTP `GET /health`。
-- `[mounts]`：`source = "seatmap_data"`、`destination = "/data"`（掛 volume 給 tiles/dxf）。
-- `[env]`：`ASPNETCORE_ENVIRONMENT = "Production"`、`Tiles__RootPath = "/data/tiles"`、`Gdal__Enabled = "true"`。
+- `[mounts]`：`source = "seatmap_data"`、`destination = "/data"`（掛 volume 給 maps/dxf）。
+- `[env]`：`ASPNETCORE_ENVIRONMENT = "Production"`、`MapStorage__RootPath = "/data"`。
 
 ### 步驟 B3：建立 volume
 ```pwsh
 fly volumes create seatmap_data --region <region> --size 3
 ```
-- 容量依底圖 Tile 量估算（多樓層高解析度需放大）。
+- 容量依底圖 GeoJSON 與原始 DXF 量估算（向量檔通常遠小於圖磚，需求小，`--size 1` 多半足夠）。
 
 ### 步驟 B4：設定 secrets（環境變數）
 ```pwsh
@@ -100,7 +99,7 @@ fly deploy
 ### 步驟 C1：Vite base
 - `vite.config.ts` 的 `base` 在 production 設 `/<repo-name>/`（與 Pages 子路徑一致）。
 - `.env.production` 的 `VITE_API_BASE_URL = https://<seatmap-api>.fly.dev/api`。
-- `API_ORIGIN`（tiles 用）= `https://<seatmap-api>.fly.dev`。
+- `API_ORIGIN`（GeoJSON 底圖 `/maps` 用）= `https://<seatmap-api>.fly.dev`。
 
 ### 步驟 C2：SPA fallback
 - GitHub Pages 無伺服器路由 → 直接深連結會 404。
@@ -138,8 +137,7 @@ fly deploy
 | `ConnectionStrings__Default` | Neon 連線 | Fly secret |
 | `SEED_ADMIN_PASSWORD` | 初始管理者密碼 | Fly secret |
 | `Cors__AllowedOrigins__0` | 允許前端來源 | Fly secret/env |
-| `Tiles__RootPath` | Tile 根目錄 | fly.toml env（`/data/tiles`） |
-| `Gdal__Enabled` | 啟用 GDAL 轉檔 | fly.toml env（`true`） |
+| `MapStorage__RootPath` | 底圖（GeoJSON/DXF）根目錄 | fly.toml env（`/data`） |
 | `ASPNETCORE_URLS` | 監聽埠 | Dockerfile（`http://+:8080`） |
 | `VITE_API_BASE_URL` | 前端打 API | `.env.production` |
 | `FLY_API_TOKEN` | 部署授權 | GitHub secret |
@@ -163,13 +161,13 @@ fly deploy
 ## 驗收條件（DoD）
 
 - [ ] Neon DB 啟用 PostGIS，Migration 成功套用，7 張表存在。
-- [ ] 後端 Docker image 內含 GDAL，`ogr2ogr`/`gdal2tiles` 可執行。
+- [ ] 後端 Docker image 透過 `MaxRev.Gdal` NuGet 內含 GDAL native，OGR DXF→GeoJSON 轉檔可執行（不需系統 `gdal-bin`）。
 - [ ] `fly deploy` 成功，`/health` 回 200。
-- [ ] Tile volume 掛載於 `/data`，上傳 DXF 後 Tile 寫入並可由 `/tiles/...` 取得。
-- [ ] 重新部署後 volume 內 Tile 仍存在（持久化驗證）。
+- [ ] 底圖 volume 掛載於 `/data`，上傳 DXF 後 GeoJSON 寫入並可由 `/maps/{floorId}.geojson` 取得。
+- [ ] 重新部署後 volume 內 GeoJSON 仍存在（持久化驗證）。
 - [ ] 前端 GitHub Actions build 成功並部署到 Pages，站台可開啟。
 - [ ] 深連結（如 `/admin`）在 Pages 不會 404（404.html fallback 生效）。
 - [ ] 前端可成功呼叫 Fly.io 後端 API（CORS 通過、Identity Bearer Token 流程正常）。
-- [ ] 前端正式站可載入後端 Tile 底圖並顯示座位地圖。
+- [ ] 前端正式站可載入後端 GeoJSON 底圖並顯示座位地圖。
 - [ ] 所有密鑰以 secret 管理，未進版控。
 - [ ] push 到 main 觸發對應前/後端自動部署。

@@ -2,7 +2,7 @@
 
 ## 模組目標
 
-以 Leaflet（`CRS.Simple`）建立座位地圖瀏覽器：載入樓層 Tile 底圖、繪製座位標記
+以 Leaflet（`CRS.Simple`）建立座位地圖瀏覽器：載入樓層 GeoJSON 向量底圖、繪製座位標記
 （頭像/姓名首字、在場狀態色彩、空座位樣式）、縮放/平移/觸控、重置視角、
 多樓層輪播切換、點擊座位浮窗、員工搜尋定位、員工本人打卡，並以輪詢即時更新在場狀態。
 
@@ -11,18 +11,19 @@
 ## 前置相依
 
 - **09 前端基礎**（API client、auth、路由、Leaflet 安裝）。
-- 後端 **03/04/05/06/08**（樓層、Tile、座位、員工搜尋、打卡）。
+- 後端 **03/04/05/06/08**（樓層、GeoJSON 底圖、座位、員工搜尋、打卡）。
 
 ---
 
 ## Leaflet CRS.Simple 要點（實作依據）
 
-- 建立地圖：`L.map(el, { crs: L.CRS.Simple, minZoom, maxZoom })`。
-- 底圖 TileLayer：`L.tileLayer('/tiles/{floorId}/{z}/{x}/{y}.png', { minZoom, maxZoom, tileSize: 256, noWrap: true, bounds })`。
-  - `tileUrlTemplate` 由後端 `GET /api/floors/{floorId}/map` 提供（已含 floorId）。
-  - 完整 URL：`VITE_API_BASE_URL` 對應後端 + `/tiles/...`（注意：tiles 不在 `/api` 之下，需用後端站台根，見步驟 2）。
-- 座標系：`CRS.Simple` 下座標為 `[y, x]`（`L.latLng(y, x)`）。後端 Seat 存 `x,y` 像素 → 前端用 `L.latLng(seat.y, seat.x)`。
-- 視野範圍：以 `FloorMap.bounds`（`[[0,0],[height,width]]`）設 `map.setMaxBounds` 並 `fitBounds`。
+- 建立地圖：`L.map(el, { crs: L.CRS.Simple })`；初始與切換樓層皆以 `fitBounds(geoJsonLayer.getBounds())` 自動定位（向量無預切層級，不需 per-floor zoom）。
+- 底圖向量：以 `fetch(geoJsonUrl)` 取得 GeoJSON，再 `L.geoJSON(data, { coordsToLatLng, style, pointToLayer, interactive: false })` 加入地圖（詳見步驟 2）。
+  - `geoJsonUrl` 由後端 `GET /api/floors/{floorId}/map` 提供（例 `/maps/{floorId}.geojson`）。
+  - 完整 URL：`VITE_API_BASE_URL` 對應後端 + `geoJsonUrl`（注意：`/maps` 不在 `/api` 之下，需用後端站台根，見步驟 2）。
+- 座標系：DXF 平面座標 Y 軸向上，與 `CRS.Simple` 緯度方向一致，**不需翻轉**。GeoJSON 座標為 `[x, y]`，以 `coordsToLatLng: ([x, y]) => L.latLng(y, x)` 對應。
+- 座位座標：後端 Seat 存與底圖**同系**的 `x,y` → 前端用 `L.latLng(seat.y, seat.x)`，與底圖天然對齊。
+- 視野範圍：以 `geoJsonLayer.getBounds()` 設 `map.fitBounds`（並可作 `map.setMaxBounds` 限制平移範圍）；範圍直接來自 GeoJSON，後端不另存 bounds。
 - 搜尋定位：`map.setView([y, x], zoom)`。
 
 ---
@@ -37,11 +38,16 @@
 - 互動預設即支援：滾輪縮放、左鍵拖曳平移。
 - 觸控：Leaflet 內建支援雙指縮放與單指拖曳（確認 `touchZoom`、`dragging` 啟用）。
 
-### 步驟 2：Tile 圖層 URL 處理
+### 步驟 2：GeoJSON 底圖載入
 
-- Tile 路徑非 `/api` 前綴，需後端「站台根」URL。
-- 於 `src/api/http.ts` 或設定中額外提供 `API_ORIGIN`（由 `VITE_API_BASE_URL` 去除 `/api` 推導），組成 `${API_ORIGIN}/tiles/{floorId}/{z}/{x}/{y}.png`。
-- 載入新樓層時移除舊 TileLayer、加入新 TileLayer，並依該樓層 `minZoom/maxZoom/bounds` 重設。
+- 由 `GET /api/floors/{floorId}/map` 取得 `geoJsonUrl`（例 `/maps/{floorId}.geojson`）與 `status`。
+- GeoJSON 路徑非 `/api` 前綴，需後端「站台根」URL：於 `src/api/http.ts` 或設定提供 `API_ORIGIN`（由 `VITE_API_BASE_URL` 去除 `/api` 推導），組成 `${API_ORIGIN}${geoJsonUrl}`。
+- `fetch` 該 URL 取得 GeoJSON，建立向量底圖圖層：
+  - `L.geoJSON(data, { coordsToLatLng: ([x, y]) => L.latLng(y, x), style, pointToLayer, interactive: false })`。
+  - **線條**（`LineString`/`MultiLineString`，來自 DXF LINE/LWPOLYLINE）：以 `style` 設定底圖樣式（如黑色細線 `{ color: '#333', weight: 1 }`）。
+  - **文字**（`Point` + 文字屬性，來自 DXF TEXT/MTEXT）：以 `pointToLayer` 轉成 `L.marker` + `L.divIcon` 顯示文字標籤（淡色）。
+  - 底圖整層設 `interactive: false`，避免攔截座位標記點擊。
+- 載入新樓層時移除舊 GeoJSON 圖層、加入新圖層，並以 `fitBounds(layer.getBounds())` 重設視野（`layer.getBounds()` 亦可作 `setMaxBounds` 限制平移範圍）。
 
 ### 步驟 3：樓層狀態管理（Pinia）
 
@@ -57,7 +63,7 @@
 於 `SeatMap.vue` 疊加控制層：
 - **左上角**：以 `NTag` 固定顯示目前樓層名稱（`currentFloor.name`）。
 - **右側**：以 `NButton`（搭配 `@vicons/material` 的箭頭圖示）點擊 `floorsStore.next()` 切換至下一樓層。
-- 切換時：替換 Tile 底圖、清除並重繪座位、`fitBounds` 到新樓層。
+- 切換時：替換 GeoJSON 底圖、清除並重繪座位、`fitBounds` 到新樓層。
 
 ### 步驟 5：座位標記繪製
 
@@ -109,7 +115,8 @@
 
 ### 步驟 11：載入與錯誤狀態
 
-- 樓層無底圖（`mapStatus !== 'Ready'`）：以 `NAlert`（`type="warning"` 或 `type="error"`）顯示提示（「底圖尚未就緒 / 轉檔中 / 轉檔失敗」）；`Processing` 狀態搭配 `NSpin`；仍可顯示座位於空白底。
+- 樓層無底圖（`mapStatus === 'None'`）或解析失敗（`'Failed'`）：以 `NAlert`（`type="warning"`／`type="error"`）顯示提示（「尚未上傳底圖」／「底圖解析失敗」，後者可帶 `errorMessage`）；仍可顯示座位於空白底。
+- GeoJSON 取檔中：以 `NSpin` 覆蓋地圖區（同步轉檔下底圖上傳即就緒，此處僅涵蓋取檔網路延遲）。
 - 無任何樓層：以 `NEmpty` 搭配提示文字告知管理者先建立樓層。
 - API 錯誤：以 `useMessage().error()` 顯示 toast 通知。
 
@@ -139,7 +146,7 @@
 
 ## 驗收條件（DoD）
 
-- [ ] 地圖以 `CRS.Simple` 載入當前樓層 Tile 底圖，縮放/平移正常。
+- [ ] 地圖以 `CRS.Simple` 載入當前樓層 GeoJSON 向量底圖，縮放/平移正常。
 - [ ] 觸控裝置可雙指縮放、單指拖曳。
 - [ ] 「重置視角」可回到底圖預設範圍。
 - [ ] 左上角顯示目前樓層名稱；右側箭頭可輪播切換至下一樓層，並重載底圖與座位。

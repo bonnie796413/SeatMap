@@ -18,7 +18,7 @@
 
 - 樓層名稱必填，可重複（不強制唯一，但建議前端提示）。
 - `DisplayOrder` 決定地圖輪播順序（模組 10）；新增時預設排在最後。
-- 刪除樓層 → cascade 刪除 `Seat`、`SeatAssignment`、`FloorMap`，並需清理 Tile 檔案（呼叫模組 04 的清理邏輯）。
+- 刪除樓層 → cascade 刪除 `Seat`、`SeatAssignment`、`FloorMap`，並需清理底圖檔案（GeoJSON 與原始 DXF，呼叫模組 04 的清理邏輯）。
 - 排序更新採批次：前端傳入有序的 floorId 陣列，後端重寫 `DisplayOrder`。
 
 ---
@@ -44,7 +44,7 @@
 - `DeleteAsync(id)`：
   1. 載入樓層與其 `FloorMap`。
   2. 刪除 DB（cascade 處理座位/指派）。
-  3. 呼叫 `ITileStorage.DeleteFloorTilesAsync(floorId)`（模組 04 提供；本模組先以介面注入，未完成前可空實作）。
+  3. 呼叫 `IFloorMapStorage.DeleteFloorMapAsync(floorId)`（模組 04 提供；本模組先以介面注入，未完成前可空實作）。
 
 ### 步驟 3：Endpoints
 
@@ -68,7 +68,7 @@
 ### 步驟 5：交易與一致性
 
 - `ReorderAsync`、`DeleteAsync` 以單一 `SaveChanges`/交易完成，避免部分更新。
-- Tile 清理失敗不應回滾 DB 刪除，但需記 log 並回報（避免孤兒檔案；可由背景清理補償）。
+- 底圖檔案清理失敗不應回滾 DB 刪除，但需記 log 並回報（避免孤兒檔案；可由背景清理補償）。
 
 ---
 
@@ -78,7 +78,7 @@
 |------|------|
 | `BackEnd/Dtos/Floors/*.cs` | 新增 |
 | `BackEnd/Services/FloorService.cs` | 新增 |
-| `BackEnd/Services/ITileStorage.cs`（介面，實作於模組 04） | 新增 |
+| `BackEnd/Services/IFloorMapStorage.cs`（介面，實作於模組 04） | 新增 |
 | `BackEnd/Endpoints/FloorEndpoints.cs` | 新增 |
 | `BackEnd/Program.cs` | 修改（DI 註冊、endpoint 掛載） |
 
@@ -103,7 +103,7 @@
 - [ ] 可重新命名樓層。
 - [ ] `reorder` 後 `GET /api/floors` 回傳順序與送入陣列一致。
 - [ ] 刪除樓層後，該樓層的座位與指派在 DB 中一併消失（cascade 驗證）。
-- [ ] 刪除樓層會觸發 Tile 清理介面呼叫（以 log 或測試替身驗證）。
+- [ ] 刪除樓層會觸發底圖清理介面呼叫（`IFloorMapStorage`，以 log 或測試替身驗證）。
 - [ ] 非管理者呼叫 `POST/PUT/DELETE` 回 403；未登入回 401。
 - [ ] `GET /api/floors` 對一般員工可用（供樓層切換）。
 - [ ] `FloorResponse.seatCount` 與 `mapStatus` 正確反映現況。

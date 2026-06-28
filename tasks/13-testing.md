@@ -61,10 +61,10 @@
 - **Attendance**：打卡後 `listByFloor` 的 `isPresent` 反映；無 employeeId 的管理者打卡 400。
 - **健康檢查**：`/health` 200。
 
-### 步驟 A5：DXF/Tile 轉檔測試
-- 以 `Gdal:Enabled=false` 路徑測試狀態流轉（上傳 → Processing → Ready 的協調邏輯，以替身略過實際 GDAL）。
-- 非 `.dxf` 上傳被拒（400）。
-- 樓層刪除呼叫 `ITileStorage.DeleteFloorTilesAsync`（以 mock 驗證）。
+### 步驟 A5：DXF→GeoJSON 轉檔測試
+- 上傳合法 `.dxf` → 同步轉檔 → `Status=Ready`，產出 `/maps/{floorId}.geojson`（以小型測試 DXF 實跑 `MaxRev.Gdal`，斷言 GeoJSON 含預期 feature）。
+- 非 `.dxf` 上傳或解析失敗被拒（400），`Status=Failed` 且 `errorMessage` 有內容。
+- 樓層刪除呼叫 `IFloorMapStorage.DeleteFloorMapAsync`（以 mock 驗證）。
 
 ---
 

@@ -34,8 +34,8 @@ BackEnd/
 ├── Data/             # DbContext、設定、Seeder（模組 01）
 ├── Entities/         # 領域實體（模組 01）
 ├── Dtos/             # 請求/回應 DTO
-├── Services/         # 業務服務（Auth、Tile、Attendance…）
-├── Options/          # 強型別設定類別（JwtOptions、GdalOptions…）
+├── Services/         # 業務服務（Auth、FloorMap、Attendance…）
+├── Options/          # 強型別設定類別（MapStorageOptions、GeoJsonConversionOptions…）
 ├── Infrastructure/   # 共用：例外處理、擴充方法
 └── Migrations/       # EF Core migration（自動產生）
 ```

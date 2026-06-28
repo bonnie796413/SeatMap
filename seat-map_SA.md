@@ -14,29 +14,26 @@
 | 前端 | @vicons/material | xicons 系列的 Material Design 圖示集，與 Naive UI 搭配使用；座位標記以 SVG 字串嵌入 Leaflet `L.divIcon` 呈現於地圖上——已指派座位使用 `PersonFilled` 圖示（或員工頭像），未指派空座位使用 `EventSeatFilled` 圖示 |
 | 前端 | vue-draggable-plus | 基於 Sortable.js 的 Vue 3 拖曳套件，用於管理後台樓層清單的拖曳排序功能，排序結果提交至後端 `PUT /api/floors/reorder` |
 | 前端 | Leaflet | 輕量級開源 JavaScript 地圖函式庫，用於在瀏覽器中渲染互動式地圖，支援圖層、標記、多邊形等地圖元素 |
-| 轉檔工具 | GDAL | 開源地理資料轉換工具集，透過命令列（`ogr2ogr`）將 DXF 解析後轉換，再切割為地圖 Tile，供 Leaflet CRS.Simple 模式載入底圖 |
-| 後端 / 前端 | SignalR | ASP.NET Core 內建即時通訊框架（WebSocket 優先），用於 DXF 轉檔完成後由後端主動推送通知給前端，取代前端輪詢；前端使用 `@microsoft/signalr` npm 套件建立 HubConnection |
+| 轉檔工具 | GDAL（`MaxRev.Gdal` NuGet） | 開源地理資料轉換工具集；以 `MaxRev.Gdal` 的 .NET 原生繫結（`OSGeo.OGR`）在後端 in-process 將 DXF 以 `VectorTranslate` 轉為 **GeoJSON 向量**，供 Leaflet `CRS.Simple` 以 `L.geoJSON` 載入底圖；不需外部 CLI 子行程或 `gdal-bin` |
 
 ---
 
-## 底圖處理流程（DXF → Tile）
+## 底圖處理流程（DXF → GeoJSON）
 
-管理者上傳 DXF 後，後端自動觸發預設 CLI 腳本執行轉換：
+管理者上傳 DXF 後，後端在請求內**同步**以 `MaxRev.Gdal` 解析並轉檔：
 
 ```
 管理者上傳 .dxf
        ↓
-後端接收檔案，觸發預設 CLI 腳本
+後端接收檔案（ASP.NET Core），存原始 DXF
        ↓
-GDAL ogr2ogr 解析 DXF 向量資料
+MaxRev.Gdal（in-process OGR）開啟 DXF（僅 Model Space）
        ↓
-柵格化為 GeoTIFF
+VectorTranslate 轉為 GeoJSON（等同 ogr2ogr -f GeoJSON，不投影）
        ↓
-切割為 Tile
+存檔 /maps/{floorId}.geojson，寫入 FloorMap（GeoJsonPath / Status）
        ↓
-Leaflet CRS.Simple 載入 Tile 作為底圖
-       ↓
-SignalR 推送 TileConversionCompleted 通知前端（Ready / Failed）
+同步回傳結果（Ready / Failed）；前端 Leaflet CRS.Simple 以 L.geoJSON 載入底圖
 ```
 
 ---
@@ -45,10 +42,9 @@ SignalR 推送 TileConversionCompleted 通知前端（Ready / Failed）
 
 | 功能 | 技術 |
 |------|------|
-| 底圖上傳與轉換 | GDAL CLI、ASP.NET Core Web API |
-| 轉檔即時通知 | SignalR（`TileConversionHub`，依 floorId 群組推送） |
+| 底圖上傳與轉換 | MaxRev.Gdal（in-process OGR `VectorTranslate`）、ASP.NET Core Web API（同步） |
 | 座位幾何座標儲存 | PostGIS (Point) + NetTopologySuite |
-| 座位地圖顯示 | Leaflet（CRS.Simple + Tile Layer） |
+| 座位地圖顯示 | Leaflet（CRS.Simple + L.geoJSON 向量圖層） |
 | 多樓層管理 | PostgreSQL + EF Core |
 | 打卡狀態更新 | ASP.NET Core Web API |
 | 員工搜尋定位 | Leaflet `setView` |
@@ -58,9 +54,10 @@ SignalR 推送 TileConversionCompleted 通知前端（Ready / Failed）
 
 ---
 
-## 底圖 Tile 架構
+## 底圖向量（GeoJSON）架構
 
-- Tile 以 **XYZ 靜態檔案**方式提供：GDAL 切割後存至磁碟，由 Nginx 靜態伺服器依路徑提供給前端 Leaflet 載入
-- DXF 轉換流程：`ogr2ogr`（解析向量）→ `gdal_rasterize`（柵格化為 GeoTIFF）→ `gdal2tiles`（切割為 XYZ Tile）
-- 底圖以圖片形式呈現，清晰度取決於輸出解析度；需預先設定適當解析度與 zoom 層級上限，避免過度放大造成模糊
-- 更新底圖時需重新執行轉換流程並覆蓋舊 Tile
+- 底圖以 **GeoJSON 檔案**方式提供：`MaxRev.Gdal` 轉檔後存至磁碟（persistent volume），由後端靜態路由 `/maps/{floorId}.geojson` 提供給前端 Leaflet 載入
+- DXF 轉換流程：`MaxRev.Gdal` in-process OGR — `Gdal.OpenEx`（開啟 DXF，僅 Model Space）→ `VectorTranslate -f GeoJSON`（解析向量、不投影）→ 存檔（範圍由前端 `getBounds()` 取得，不在後端計算）
+- 底圖以**向量**呈現，可無限縮放不失真；無預切層級，前端以 `fitBounds(layer.getBounds())` 自動定位，縮放範圍不存 DB
+- 前端以 `L.geoJSON` 渲染：DXF 線條（LINE/LWPOLYLINE）→ `LineString`，文字（TEXT/MTEXT）→ `Point` + 文字標籤
+- 更新底圖時重新執行轉換並以原子搬移覆蓋舊 GeoJSON

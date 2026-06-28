@@ -15,11 +15,11 @@
 | ORM | Entity Framework Core（Code First） |
 | 資料庫 | PostgreSQL + PostGIS（Neon 託管） |
 | 空間資料 | NetTopologySuite，座位以 `Point` 幾何儲存 |
-| DXF→Tile | GDAL CLI（`ogr2ogr` → `gdal_rasterize` → `gdal2tiles`），打包進後端 Docker image，後端以子行程呼叫 |
-| Tile 儲存 | Fly.io persistent volume，後端以靜態路由 `/tiles/{floorId}/{z}/{x}/{y}.png` 提供 |
+| DXF→GeoJSON | `MaxRev.Gdal` NuGet（GDAL .NET 原生繫結），後端 in-process 以 OGR `VectorTranslate` 將 DXF 解析為 GeoJSON（同步處理，不需外部 CLI／`gdal-bin`） |
+| GeoJSON 儲存 | Fly.io persistent volume（檔案），後端以靜態路由 `/maps/{floorId}.geojson` 提供 |
 | 身分驗證 | ASP.NET Core Identity API Endpoints + Bearer Token（`AddIdentityApiEndpoints` + `MapIdentityApi`；框架內建登入/refresh/密碼管理；前端存 token，帶 `Authorization` header） |
 | 前端框架 | Vue 3 + Vite + Pinia + Vue Router |
-| 地圖前端 | Leaflet（`CRS.Simple` + TileLayer） |
+| 地圖前端 | Leaflet（`CRS.Simple` + `L.geoJSON` 向量圖層） |
 | 後端部署 | Fly.io（Docker） |
 | 前端部署 | GitHub Pages |
 | DB 部署 | Neon |
@@ -34,7 +34,7 @@
 | 01 | [01-database-and-domain-model.md](./01-database-and-domain-model.md) | 資料庫與領域模型 | 後端 |
 | 02 | [02-authentication-and-authorization.md](./02-authentication-and-authorization.md) | 身分驗證與授權 | 後端 |
 | 03 | [03-floor-management.md](./03-floor-management.md) | 多樓層管理 | 後端 |
-| 04 | [04-dxf-tile-pipeline.md](./04-dxf-tile-pipeline.md) | DXF 上傳與 Tile 轉檔 | 後端 |
+| 04 | [04-dxf-tile-pipeline.md](./04-dxf-tile-pipeline.md) | DXF 上傳與 GeoJSON 轉檔 | 後端 |
 | 05 | [05-seat-management.md](./05-seat-management.md) | 座位管理 | 後端 |
 | 06 | [06-employee-management.md](./06-employee-management.md) | 員工管理 | 後端 |
 | 07 | [07-seat-assignment.md](./07-seat-assignment.md) | 座位指派 | 後端 |
@@ -59,7 +59,7 @@
 02 身分驗證 ───────────────────────────────┐
    │                                       │
    ▼                                       │
-03 樓層管理 ──► 04 DXF/Tile 轉檔            │（02 為所有需授權的 API 之前置）
+03 樓層管理 ──► 04 DXF/GeoJSON 轉檔         │（02 為所有需授權的 API 之前置）
    │                                       │
    ▼                                       │
 05 座位管理 ──► 06 員工管理 ──► 07 座位指派 ──► 08 打卡
@@ -78,11 +78,11 @@
 ### 關鍵相依說明
 - **01 → 全部後端**：所有後端模組依賴 DbContext 與 Entity。
 - **02 → 03~08、11**：所有寫入型 API 與管理者操作需 JWT 授權。
-- **04 依賴 03**：Tile 必須掛在已存在的樓層上。
+- **04 依賴 03**：GeoJSON 底圖必須掛在已存在的樓層上。
 - **05 依賴 03**：座位屬於樓層。
 - **07 依賴 05、06**：指派連結座位與員工。
 - **08 依賴 06**：打卡對象為員工（登入者）。
-- **10 依賴 04、05、08**：地圖需 Tile、座位、在場狀態 API。
+- **10 依賴 04、05、08**：地圖需 GeoJSON 底圖、座位、在場狀態 API。
 - **12 依賴全部**：所有功能完成後整合部署。
 
 ---
@@ -92,7 +92,7 @@
 | 里程碑 | 涵蓋模組 | 可驗收成果 |
 |--------|----------|------------|
 | M1 後端骨架可跑 | 00, 01, 02 | 可登入取得 JWT、DB schema 建立完成 |
-| M2 地圖資料就緒 | 03, 04, 05 | 可上傳 DXF 產出 Tile、建立樓層與座位 |
+| M2 地圖資料就緒 | 03, 04, 05 | 可上傳 DXF 產出 GeoJSON 底圖、建立樓層與座位 |
 | M3 業務邏輯完成 | 06, 07, 08 | 員工/指派/打卡 API 全通 |
 | M4 前端可視化 | 09, 10 | 地圖顯示底圖、座位、在場狀態、搜尋定位 |
 | M5 管理後台 | 11 | 管理者可完成整套地圖設定流程 |

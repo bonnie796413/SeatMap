@@ -15,14 +15,14 @@
 - **01 資料庫**（`Seat`、NetTopologySuite `Point`）。
 - **02 身分驗證**（新增/編輯/刪除為管理者）。
 - **03 樓層管理**（座位屬於樓層）。
-- 軟相依 **04**（座標系與 bounds 對齊 Tile）、**06/07/08**（座位查詢回傳指派員工與在場狀態）。
+- 軟相依 **04**（座標系對齊底圖 GeoJSON）、**06/07/08**（座位查詢回傳指派員工與在場狀態）。
 
 ---
 
 ## 業務規則
 
 - 座位編號 `SeatNumber` 在「同一樓層內」唯一（DB 已建複合唯一索引）。
-- 座標 `Location` 為底圖像素座標（與模組 04 的 bounds 一致；Leaflet `CRS.Simple` 下 `latlng = [y, x]`）。
+- 座標 `Location` 為底圖平面座標（與模組 04 GeoJSON 同座標系；Leaflet `CRS.Simple` 下 `latlng = [y, x]`）。
   - **約定**：後端以 `Point(X=像素x, Y=像素y)` 儲存；前端轉換為 Leaflet `L.latLng(y, x)`。
 - 刪除座位 → cascade 移除其 `SeatAssignment`（員工變未指派）。
 - 既有 `BackEnd/Endpoints/SeatEndpoints.cs` 的 5 個 TODO stub 全數以真實邏輯取代，並改為 `/api` 群組與授權。
@@ -72,7 +72,7 @@
 - `seatNumber` 空白 → 400。
 - 同樓層重複編號 → 409。
 - 樓層不存在 → 404。
-- `x/y` 超出底圖 bounds（若 `FloorMap.Ready`）→ 回傳 400 並附帶警告訊息，不寫入 DB。
+- 座位 `x/y` 由前端在底圖上點擊產生，天然落在底圖範圍內；移除 `BoundsJson` 後後端不再做範圍驗證（如需嚴格檢查可即時讀取該樓層 GeoJSON 的 extent 比對，列為可選）。
 
 ### 步驟 6：效能
 

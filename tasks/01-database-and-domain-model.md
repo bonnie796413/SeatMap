@@ -19,7 +19,7 @@ ApplicationUser : IdentityUser (登入帳號，繼承 Identity 標準表 AspNetU
                             └─1:1─ AttendanceState (目前在場狀態)
 
 Floor (樓層) ─1:N─ Seat (座位，含 Point 幾何)
-Floor ─1:1─ FloorMap (底圖/Tile 中繼資料)
+Floor ─1:1─ FloorMap (底圖/GeoJSON 中繼資料)
 
 Identity 系列表（自動產生）：AspNetUsers、AspNetRoles、AspNetUserRoles、
   AspNetUserClaims、AspNetUserLogins、AspNetUserTokens、AspNetRoleClaims
@@ -61,23 +61,19 @@ Identity 系列表（自動產生）：AspNetUsers、AspNetRoles、AspNetUserRol
 | DisplayOrder | int | 輪播/排序用，可拖曳調整 |
 | CreatedAt | timestamptz | |
 
-### FloorMap（`floor_maps`）— 底圖/Tile 中繼資料
+### FloorMap（`floor_maps`）— 底圖（GeoJSON 向量）中繼資料
 | 欄位 | 型別 | 說明 |
 |------|------|------|
 | Id | Guid PK | |
 | FloorId | Guid FK→floors unique | 一樓層一底圖 |
 | OriginalDxfPath | varchar(512) | 原始 DXF 儲存路徑；檔案路徑上限 512 字元 |
-| TileDirectory | varchar(512)? | Tile 輸出目錄（相對 volume）；路徑上限 512 字元 |
-| MinZoom | int | Leaflet zoom 下限 |
-| MaxZoom | int | zoom 上限 |
-| Width | int? | 像素寬（柵格化後） |
-| Height | int? | 像素高 |
-| BoundsJson | varchar(100)? | Leaflet `CRS.Simple` bounds（[[0,0],[h,w]]）；格式固定，100 字元有餘 |
-| Status | varchar(20) | `Pending`/`Processing`/`Ready`/`Failed`；最長值 10 字元，預留至 20 |
-| ErrorMessage | text? | 轉檔失敗訊息；錯誤訊息長度不可預測，不限制 |
+| GeoJsonPath | varchar(512)? | 轉檔輸出的 GeoJSON 檔案路徑（相對 volume）；路徑上限 512 字元 |
+| Status | varchar(20) | `Pending`/`Processing`/`Ready`/`Failed`（同步轉檔，實際以 `Ready`/`Failed` 為主）；預留至 20 |
+| ErrorMessage | text? | 轉檔失敗訊息；長度不可預測，不限制 |
 | UpdatedAt | timestamptz | |
 
-> 詳細 Tile 流程於模組 04；本模組僅建表。
+> 詳細 GeoJSON 轉檔流程於模組 04（DXF → GeoJSON，in-process GDAL）；本模組僅建表。
+> 縮放範圍不存 DB：前端以 `fitBounds(layer.getBounds())` 自動定位（向量無預切層級，縮放為純前端互動）。
 
 ### Seat（`seats`）
 | 欄位 | 型別 | 說明 |
@@ -85,7 +81,7 @@ Identity 系列表（自動產生）：AspNetUsers、AspNetRoles、AspNetUserRol
 | Id | Guid PK | |
 | FloorId | Guid FK→floors | 所屬樓層 |
 | SeatNumber | varchar(20) | 座位編號（同樓層內唯一）；如「A-101」，上限 20 字元 |
-| Location | geometry(Point) | PostGIS Point（CRS.Simple 像素座標，SRID 0） |
+| Location | geometry(Point) | PostGIS Point（與底圖同系的 DXF 平面座標，SRID 0；`CRS.Simple`） |
 | CreatedAt | timestamptz | |
 
 ### SeatAssignment（`seat_assignments`）

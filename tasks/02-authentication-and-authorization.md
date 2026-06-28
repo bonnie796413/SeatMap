@@ -193,7 +193,7 @@ if (!(await userManager.GetUsersInRoleAsync("Admin")).Any())
 
 - 需管理者的 endpoint 加 `.RequireAuthorization("AdminOnly")`。
 - 一般需登入加 `.RequireAuthorization()`。
-- 公開 endpoint（如 tile 路由、`/health`）明確 `.AllowAnonymous()`。
+- 公開 endpoint（如 `/maps` 底圖路由、`/health`）明確 `.AllowAnonymous()`。
 
 ### 步驟 8：錯誤回應一致性
 
